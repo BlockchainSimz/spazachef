@@ -1,0 +1,32 @@
+{
+  "projectSettings": {
+    "name": "spazachef",
+    "buildCommand": "npm run build",
+    "outputDirectory": "dist",
+    "devCommand": "npm run dev"
+  },
+  "env": {
+    "SUPABASE_URL": {
+      "description": "Supabase project URL"
+    },
+    "SUPABASE_KEY": {
+      "description": "Supabase anonymous API key"
+    },
+    "SUPABASE_JWT_SECRET": {
+      "description": "Supabase JWT secret for signing"
+    },
+    "VITE_API_URL": {
+      "description": "Backend API URL"
+    }
+  },
+  "buildGroups": [
+    {
+      "name": "Frontend",
+      "builds": ["frontend"]
+    },
+    {
+      "name": "Backend",
+      "builds": ["backend"]
+    }
+  ]
+}
