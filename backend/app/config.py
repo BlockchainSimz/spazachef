@@ -2,6 +2,7 @@
 
 from pydantic_settings import BaseSettings
 from typing import List
+import os
 
 class Settings(BaseSettings):
     # App
@@ -9,11 +10,17 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     ENV: str = "development"
     
-    # Database
-    SUPABASE_URL: str = ""
-    SUPABASE_KEY: str = ""
+    # Database - Direct PostgreSQL Connection
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        "postgresql://postgres:password@localhost:5432/postgres"
+    )
+    
+    # Supabase (REST API)
+    SUPABASE_URL: str = "https://itkovoagalodjqfjvmlp.supabase.co"
+    SUPABASE_ANON_KEY: str = "sb_publishable_aQGYuHXVJ7xah8ZXlw0Bhw_P8uBOBnf"
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = ""
-    DATABASE_URL: str = ""
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
