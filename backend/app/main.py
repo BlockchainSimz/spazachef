@@ -1,28 +1,15 @@
-"""
-SpazaChef API - FastAPI Application
-AI-powered South African recipe platform
-"""
+"""SpazaChef API - FastAPI application"""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-
+from app.api.recipes_agent import router as recipes_router
 from app.config import settings
 
-# Initialize FastAPI app
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("🍳 SpazaChef API Starting...")
-    yield
-    # Shutdown
-    print("🍳 SpazaChef API Shutting down...")
-
+# Create FastAPI app
 app = FastAPI(
     title="SpazaChef API",
-    description="AI-powered South African recipe platform",
+    description="AI-powered South African recipe generator",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -34,22 +21,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(recipes_router)
+
 # Health check
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "spazachef-api"}
-
-# API routes (to be implemented)
-@app.get("/api/v1")
-async def api_root():
+    """Health check endpoint"""
     return {
-        "service": "SpazaChef API",
+        "status": "ok",
+        "service": "spazachef-api",
+        "version": "1.0.0"
+    }
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "SpazaChef API",
         "version": "1.0.0",
-        "endpoints": {
-            "recipes": "/api/v1/recipes",
-            "auth": "/api/v1/auth",
-            "subscriptions": "/api/v1/subscriptions",
-        }
+        "docs": "/docs"
     }
 
 if __name__ == "__main__":
