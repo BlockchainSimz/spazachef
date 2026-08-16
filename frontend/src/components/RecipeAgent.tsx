@@ -167,7 +167,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {CHEFS.map((chef) => (
+            {CHEFS.map((chef: Chef) => (
               <button
                 key={chef.id}
                 onClick={() => handleChefSelect(chef)}
