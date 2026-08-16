@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, X, Loader } from 'lucide-react';
-import { CHEFS, FOLLOW_UP_QUESTIONS } from '../lib';
+import { CHEFS, FOLLOW_UP_QUESTIONS } from '../lib/chefs';
 import { Chef, ChatMessage, SubscriptionTier } from '../types/chef';
 
 interface RecipeAgentProps {
