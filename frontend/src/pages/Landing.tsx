@@ -1,13 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { ArrowRight, Zap, MessageCircle, Lock } from 'lucide-react';
 import RecipeAgent from '../components/RecipeAgent';
+import AuthPanel from '../components/AuthPanel';
 import SpazaChefLogo from '../components/SpazaChefLogo';
 
 const Landing: React.FC = () => {
   const [showAgent, setShowAgent] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const agentRef = useRef<HTMLDivElement>(null);
 
   const scrollToAgent = () => {
+    if (!authenticated) return;
     setShowAgent(true);
     setTimeout(() => {
       agentRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -24,10 +27,10 @@ const Landing: React.FC = () => {
             <span className="text-xl font-bold text-stone-900">SpazaChef</span>
           </div>
           <button
-            onClick={scrollToAgent}
+            onClick={() => authenticated ? scrollToAgent() : document.getElementById('auth')?.scrollIntoView({ behavior: 'smooth' })}
             className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
           >
-            Start Cooking
+            {authenticated ? 'Start Cooking' : 'Sign in to Cook'}
           </button>
         </div>
       </nav>
@@ -218,6 +221,13 @@ const Landing: React.FC = () => {
           </button>
         </div>
       </section>
+
+      {/* Account */}
+      {!authenticated && (
+        <section id="auth" className="py-20 px-6 bg-orange-50">
+          <AuthPanel onAuthenticated={() => setAuthenticated(true)} />
+        </section>
+      )}
 
       {/* Recipe Agent */}
       {showAgent && (
