@@ -1,5 +1,5 @@
 """Authentication endpoints backed by Supabase Auth."""
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from app.security.auth import (
@@ -50,7 +50,7 @@ async def refresh_session(
 
 
 @router.get("/me")
-async def me(user: dict = __import__("fastapi").Depends(current_user)) -> dict[str, object]:
+async def me(user: dict = Depends(current_user)) -> dict[str, object]:
     return {"user": user, "authenticated": True}
 
 
