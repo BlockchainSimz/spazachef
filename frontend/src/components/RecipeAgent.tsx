@@ -57,7 +57,6 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
         {
           method: 'POST',
           credentials: 'include',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ingredients: ingredients.split(',').map((i) => i.trim()),
