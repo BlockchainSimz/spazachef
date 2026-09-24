@@ -7,6 +7,8 @@ interface RecipeAgentProps {
   tier?: SubscriptionTier;
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
   const [selectedChef, setSelectedChef] = useState<Chef | null>(null);
   const [ingredients, setIngredients] = useState('');
@@ -51,9 +53,10 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
     try {
       // Call backend API
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/v1/recipes/generate`,
+        `${API_BASE_URL}/api/v1/recipes/generate`,
         {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ingredients: ingredients.split(',').map((i) => i.trim()),
@@ -64,6 +67,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
       );
 
       const data = await response.json();
+      if (!response.ok) throw new Error(data?.detail || 'Recipe generation failed');
       setMessages((prev) => [
         ...prev,
         {
@@ -75,7 +79,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
       setHasRecipeGenerated(true);
       setFollowUpQuestionsUsed(0);
       setIngredients('');
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -115,7 +119,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/v1/recipes/followup`,
+        `${API_BASE_URL}/api/v1/recipes/followup`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -123,11 +127,13 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
             question: inputValue,
             chef_id: selectedChef.id,
             chef_name: selectedChef.name,
+            recipe_context: messages.filter((message) => message.role === 'assistant').slice(-1)[0]?.content || '',
           }),
         }
       );
 
       const data = await response.json();
+      if (!response.ok) throw new Error(data?.detail || 'Follow-up request failed');
       setMessages((prev) => [
         ...prev,
         {
@@ -140,7 +146,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
       if (tier !== 'premium') {
         setFollowUpQuestionsUsed(followUpQuestionsUsed + 1);
       }
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {

@@ -1,140 +1,67 @@
-# 🚀 VERCEL DEPLOYMENT - READY TO GO
+# Vercel Deployment
 
-**Status**: ✅ Application pushed to GitHub - Ready for Vercel auto-deployment
+SpazaChef is split into a Vite frontend and FastAPI backend.
 
----
+## Frontend project
 
-## OPTION 1: Auto-Deploy from GitHub (Recommended)
+Import the repository into Vercel and set the project root to `frontend`.
 
-Vercel automatically deploys when you push to GitHub. Since SpazaChef is already on GitHub, Vercel can pick it up immediately.
+- Framework preset: Vite
+- Build command: `npm run build`
+- Output directory: `dist`
+- Install command: `npm ci`
 
-### Steps:
+Configure these Vercel environment variables:
 
-1. **Go to Vercel Dashboard**: https://vercel.com/dashboard
-
-2. **Import Frontend Project**:
-   - Click "Add New" → "Project"
-   - Click "Import Git Repository"
-   - Search: `BlockchainSimz/spazachef`
-   - Click "Import"
-   - **Framework**: Vite
-   - **Build Command**: `cd frontend && npm run build`
-   - **Output Directory**: `frontend/dist`
-   - **Install Command**: `cd frontend && npm install`
-   - **Add Environment Variables** (Settings → Environment Variables):
-     ```
-     VITE_SUPABASE_URL = https://itkovoagalodjqfjvmlp.supabase.co
-     VITE_SUPABASE_ANON_KEY = sb_publishable_aQGYuHXVJ7xah8ZXlw0Bhw_P8uBOBnf
-     VITE_API_URL = https://spazachef-api.vercel.app
-     ```
-   - Click "Deploy"
-   - **Result**: https://spazachef.vercel.app ✅
-
-3. **Import Backend Project**:
-   - Click "Add New" → "Project"
-   - Click "Import Git Repository"
-   - Search: `BlockchainSimz/spazachef` (again)
-   - Click "Import"
-   - **Project Name**: `spazachef-api`
-   - **Framework**: Other
-   - **Root Directory**: `backend`
-   - **Build Command**: `pip install -r backend/requirements.txt`
-   - **Add Environment Variables** (Settings → Environment Variables):
-     ```
-     DATABASE_URL = postgresql://postgres:[$P@z@Ch3f@Pp]@db.itkovoagalodjqfjvmlp.supabase.co:5432/postgres
-     SUPABASE_URL = https://itkovoagalodjqfjvmlp.supabase.co
-     SUPABASE_ANON_KEY = sb_publishable_aQGYuHXVJ7xah8ZXlw0Bhw_P8uBOBnf
-     SUPABASE_SERVICE_ROLE_KEY = [from Supabase Settings → API]
-     SUPABASE_JWT_SECRET = [from Supabase Settings → Auth]
-     JWT_SECRET = [generate: openssl rand -hex 32]
-     JWT_ALGORITHM = HS256
-     JWT_EXPIRATION_HOURS = 24
-     DEBUG = false
-     ENV = production
-     ALLOWED_ORIGINS = https://spazachef.vercel.app
-     ```
-   - Click "Deploy"
-   - **Result**: https://spazachef-api.vercel.app ✅
-
----
-
-## OPTION 2: CLI Deployment
-
-If you have Vercel CLI installed:
-
-```bash
-# Frontend
-cd frontend
-vercel --prod
-
-# Backend
-cd backend
-vercel --prod --name spazachef-api
+```text
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+VITE_API_URL=https://YOUR_API_DOMAIN
 ```
 
----
+## Backend project
 
-## OPTION 3: GitHub Integration (Automatic)
+Create a second Vercel project from the same repository and set its root directory to `backend`.
 
-If you've already connected your GitHub to Vercel:
+- Runtime: Python
+- Install dependencies from `requirements.txt`
+- The serverless entry point is `api/index.py`
 
-1. Push any commit to the `main` branch
-2. Vercel automatically detects changes
-3. Builds and deploys automatically
-4. No manual steps needed
+Configure secrets in Vercel Project Settings; do not place them in Git:
 
----
-
-## After Deployment
-
-### Test Frontend:
-```bash
-curl https://spazachef.vercel.app
-# Should return: React app
+```text
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_ANON_KEY=YOUR_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SERVICE_ROLE_KEY=SET_IN_VERCEL
+SUPABASE_JWT_SECRET=SET_IN_VERCEL
+DATABASE_URL=SET_IN_VERCEL
+JWT_SECRET=SET_IN_VERCEL
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION_HOURS=24
+ANTHROPIC_API_KEY=SET_IN_VERCEL
+ANTHROPIC_MODEL=claude-3-5-haiku-latest
+ANTHROPIC_TIMEOUT_SECONDS=30
+ENV=production
+DEBUG=false
+ALLOWED_ORIGINS=https://YOUR_FRONTEND_DOMAIN
 ```
 
-### Test Backend:
+## Verification
+
+After deployment:
+
 ```bash
-curl https://spazachef-api.vercel.app/health
-# Should return: {"status": "ok", "service": "spazachef-api"}
+curl https://YOUR_API_DOMAIN/health
 ```
 
-### Test Recipes API:
-```bash
-curl https://spazachef-api.vercel.app/api/v1/recipes
-# Should return: JSON array with recipes
+Expected response:
+
+```json
+{"status":"ok","service":"spazachef-api","version":"1.1.0"}
 ```
 
----
+Then open the frontend and exercise recipe generation and follow-up questions.
 
-## Environment Variables Checklist
+## Security
 
-### Frontend (3 variables):
-- [ ] VITE_SUPABASE_URL
-- [ ] VITE_SUPABASE_ANON_KEY
-- [ ] VITE_API_URL
-
-### Backend (11 variables):
-- [ ] DATABASE_URL
-- [ ] SUPABASE_URL
-- [ ] SUPABASE_ANON_KEY
-- [ ] SUPABASE_SERVICE_ROLE_KEY
-- [ ] SUPABASE_JWT_SECRET
-- [ ] JWT_SECRET
-- [ ] JWT_ALGORITHM
-- [ ] JWT_EXPIRATION_HOURS
-- [ ] DEBUG
-- [ ] ENV
-- [ ] ALLOWED_ORIGINS
-
----
-
-## Status
-
-✅ GitHub Repository: https://github.com/BlockchainSimz/spazachef
-✅ Code Pushed: Ready for Vercel import
-✅ Documentation: Complete
-⏳ Deployment: Ready to deploy
-
-**Next Step**: Go to https://vercel.com/dashboard and follow Option 1 above
-
+Any credential that was previously committed to this repository must be rotated in the originating provider. Removing a file from a branch does not erase credentials from Git history.
