@@ -78,7 +78,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
       setHasRecipeGenerated(true);
       setFollowUpQuestionsUsed(0);
       setIngredients('');
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -126,7 +126,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
             question: inputValue,
             chef_id: selectedChef.id,
             chef_name: selectedChef.name,
-            recipe_context: messages.filter((message) => message.role === 'assistant').at(-1)?.content || '',
+            recipe_context: messages.filter((message) => message.role === 'assistant').slice(-1)[0]?.content || '',
           }),
         }
       );
@@ -145,7 +145,7 @@ const RecipeAgent: React.FC<RecipeAgentProps> = ({ tier = 'free' }) => {
       if (tier !== 'premium') {
         setFollowUpQuestionsUsed(followUpQuestionsUsed + 1);
       }
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
