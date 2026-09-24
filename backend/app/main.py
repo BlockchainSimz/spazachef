@@ -1,48 +1,35 @@
-"""SpazaChef API - FastAPI application"""
+"""SpazaChef API - FastAPI application."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.recipes_agent import router as recipes_router
 from app.config import settings
 
-# Create FastAPI app
 app = FastAPI(
     title="SpazaChef API",
     description="AI-powered South African recipe generator",
-    version="1.0.0",
+    version="1.1.0",
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-# Include routers
 app.include_router(recipes_router)
 
-# Health check
+
 @app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "ok",
-        "service": "spazachef-api",
-        "version": "1.0.0"
-    }
+async def health_check() -> dict[str, str]:
+    return {"status": "ok", "service": "spazachef-api", "version": "1.1.0"}
+
 
 @app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "message": "SpazaChef API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+async def root() -> dict[str, str]:
+    return {"message": "SpazaChef API", "version": "1.1.0"}
