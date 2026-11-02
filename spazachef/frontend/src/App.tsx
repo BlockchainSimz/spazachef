@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 const API = import.meta.env.VITE_API_URL ?? "";
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL ?? "").replace(/\/$/, "");
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
-type Session = { access_token: string; refresh_token: string; expires_at?: number };
+type Session = { access_token: string; refresh_token: string; expires_at?: number; user?: { email?: string } };
 const readSession = (): Session | null => { try { return JSON.parse(localStorage.getItem("supabase_session") || "null"); } catch { return null; } };
 const saveSession = (session: Session) => { localStorage.setItem("supabase_session", JSON.stringify(session)); localStorage.setItem("token", session.access_token); };
 async function refreshSession(): Promise<boolean> {
@@ -31,7 +31,8 @@ export default function App() {
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [recipe, setRecipe] = useState<Recipe | null>(null), [recent, setRecent] = useState<Recipe[]>([]), [all, setAll] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [session, setSession] = useState<Session | null>(() => readSession());
-  const [email, setEmail] = useState(""), [password, setPassword] = useState(""), [authMode, setAuthMode] = useState<"signin" | "signup">("signin"), [authBusy, setAuthBusy] = useState(false), [authErr, setAuthErr] = useState("");
+  const [email, setEmail] = useState(() => readSession()?.user?.email ?? ""), [password, setPassword] = useState(""), [authMode, setAuthMode] = useState<"signin" | "signup">("signin"), [authBusy, setAuthBusy] = useState(false), [authErr, setAuthErr] = useState("");
+  const [checkoutBusy, setCheckoutBusy] = useState(false), [checkoutErr, setCheckoutErr] = useState("");
   async function authenticate(e: FormEvent) {
     e.preventDefault(); setAuthBusy(true); setAuthErr("");
     try {
@@ -43,7 +44,19 @@ export default function App() {
       const next = { ...value, expires_at: Date.now() + (value.expires_in ?? 3600) * 1000 } as Session; saveSession(next); setSession(next);
     } catch (error) { setAuthErr((error as Error).message); } finally { setAuthBusy(false); }
   }
-  function signOut() { localStorage.removeItem("supabase_session"); localStorage.removeItem("token"); localStorage.removeItem("recent"); setRecent([]); setSession(null); }
+  function signOut() { localStorage.removeItem("supabase_session"); localStorage.removeItem("token"); localStorage.removeItem("recent"); setRecent([]); setRecipe(null); setEmail(""); setSession(null); }
+  async function startCheckout(tier: "basic" | "premium") {
+    setCheckoutBusy(true); setCheckoutErr("");
+    try {
+      const checkout = await api<{ action: string; fields: Record<string, string> }>("/api/payfast/checkout", { tier, email });
+      const target = new URL(checkout.action);
+      const allowedHosts = ["www.payfast.co.za", "sandbox.payfast.co.za"];
+      if (target.protocol !== "https:" || !allowedHosts.includes(target.hostname) || target.pathname !== "/eng/process") throw new Error("Checkout destination could not be verified.");
+      const form = document.createElement("form"); form.method = "POST"; form.action = target.toString(); form.style.display = "none";
+      Object.entries(checkout.fields).forEach(([name, value]) => { const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; form.appendChild(input); });
+      document.body.appendChild(form); form.submit();
+    } catch (error) { setCheckoutErr((error as Error).message); setCheckoutBusy(false); }
+  }
   useEffect(() => { const f = () => setOnline(navigator.onLine); addEventListener("online", f); addEventListener("offline", f); return () => { removeEventListener("online", f); removeEventListener("offline", f); }; }, []);
   useEffect(() => { api<Recipe[]>("/api/recipes").then(r => { setRecent(r); localStorage.setItem("recent", JSON.stringify(r)); }).catch(() => setRecent(JSON.parse(localStorage.getItem("recent") || "[]"))); }, [session?.access_token]);
   async function go(regen = false) {
@@ -79,6 +92,7 @@ export default function App() {
         <h3 className="serif">Method</h3><ol>{recipe.steps.map((s, k) => <li key={k}>{s}</li>)}</ol>{recipe.notes.map((n, k) => <p key={k} className="lede">{n}</p>)}
         <div className="rate" role="group" aria-label="Rate this recipe">{[1, 2, 3, 4, 5].map(n => <button key={n} aria-label={`${n} stars`} className={(recipe.rating ?? 0) >= n ? "lit" : ""} onClick={() => rate(recipe, n)}>★</button>)}</div>
         <div className="row"><button className="ghost" disabled={recipe.cooked} onClick={() => rate(recipe, undefined, true)}>{recipe.cooked ? "Cooked ✓" : "I cooked this"}</button><button className="ghost" disabled={busy} onClick={() => go(true)}>Try another take</button></div></section>}
+      {session && <section className="card"><p className="mono eyebrow">03 / More from the pantry</p><h2 className="serif">Keep cooking with SpazaChef</h2><label>PayFast receipt email<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label>{checkoutErr && <p className="err" role="alert">{checkoutErr}</p>}<div className="row"><button type="button" className="ghost" disabled={checkoutBusy || !email.trim()} onClick={() => startCheckout("basic")}>{checkoutBusy ? "Opening checkout…" : "Basic · R15 · 30 recipes/day"}</button><button type="button" className="ghost" disabled={checkoutBusy || !email.trim()} onClick={() => startCheckout("premium")}>{checkoutBusy ? "Opening checkout…" : "Premium · R99 · 10,000 recipes/day"}</button></div></section>}
       <p className="mono eyebrow">Your kitchen memory</p>
       <div className="head"><h2 className="serif big">Recent recipes</h2>{recent.length > 3 && <button className="link" onClick={() => setAll(!all)}>{all ? "Show less" : "See all ›"}</button>}</div>
       {recent.length === 0 ? <div className="empty"><span aria-hidden>⟲</span><h3 className="serif">No recipes in the book yet.</h3><p>Your next good idea will show up here.</p></div>
