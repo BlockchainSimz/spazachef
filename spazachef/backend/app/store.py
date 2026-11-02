@@ -32,6 +32,11 @@ def _connect():
             payment_id TEXT PRIMARY KEY, uid TEXT NOT NULL, tier TEXT NOT NULL,
             amount TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS checkout_orders(
+            order_id TEXT PRIMARY KEY, uid TEXT NOT NULL, tier TEXT NOT NULL,
+            amount TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+            at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     return connection
 
@@ -110,17 +115,37 @@ def tier(uid):
         return row and row["tier"]
 
 
-def record_payment(payment_id, uid, tier_name, amount):
-    """Apply one verified ITN exactly once, even when PayFast retries it."""
+def create_checkout_order(order_id, uid, tier_name, amount):
     with _LOCK, db() as connection:
+        connection.execute(
+            "INSERT INTO checkout_orders(order_id,uid,tier,amount) VALUES(?,?,?,?)",
+            (order_id, uid, tier_name, amount),
+        )
+
+
+def record_payment(payment_id, order_id, uid, tier_name, amount):
+    """Apply a verified ITN only to its matching server-created order."""
+    with _LOCK, db() as connection:
+        order = connection.execute(
+            "SELECT uid,tier,amount,status FROM checkout_orders WHERE order_id=?", (order_id,)
+        ).fetchone()
+        if not order or (order["uid"], order["tier"], order["amount"]) != (uid, tier_name, amount):
+            return False
+        if order["status"] == "paid":
+            return connection.execute(
+                "SELECT 1 FROM payments WHERE payment_id=? AND uid=? AND tier=? AND amount=?",
+                (payment_id, uid, tier_name, amount),
+            ).fetchone() is not None
         cursor = connection.execute(
             "INSERT OR IGNORE INTO payments(payment_id,uid,tier,amount) VALUES(?,?,?,?)",
             (payment_id, uid, tier_name, amount),
         )
-        if cursor.rowcount:
-            connection.execute(
-                "INSERT INTO tiers(uid,tier) VALUES(?,?) "
-                "ON CONFLICT(uid) DO UPDATE SET tier=excluded.tier", (uid, tier_name)
-            )
-        return bool(cursor.rowcount)
+        if not cursor.rowcount:
+            return False
+        connection.execute(
+            "INSERT INTO tiers(uid,tier) VALUES(?,?) "
+            "ON CONFLICT(uid) DO UPDATE SET tier=excluded.tier", (uid, tier_name)
+        )
+        connection.execute("UPDATE checkout_orders SET status='paid' WHERE order_id=?", (order_id,))
+        return True
 
