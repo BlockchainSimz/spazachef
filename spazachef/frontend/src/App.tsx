@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL ?? "").replace(/\/$/, "");
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 type Session = { access_token: string; refresh_token: string; expires_at?: number; user?: { email?: string } };
