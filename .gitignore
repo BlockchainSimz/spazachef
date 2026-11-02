@@ -36,6 +36,8 @@ dist/
 .env
 .env.local
 .env.*.local
+spazachef/.env.backend
+spazachef/backend/.pip-audit-cache/
 
 # IDE
 .vscode/
@@ -65,3 +67,4 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
