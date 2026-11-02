@@ -1,31 +1,126 @@
-import json, os, sqlite3, threading
-_L = threading.Lock(); PATH = os.getenv("DATABASE_PATH", "spazachef.db")
+"""SQLite persistence for the single-node deployment profile."""
+import json
+import os
+import sqlite3
+import threading
+from contextlib import contextmanager
+
+_LOCK = threading.RLock()
+_PATH = os.getenv("DATABASE_PATH", "spazachef.db")
+
+
+def _connect():
+    parent = os.path.dirname(os.path.abspath(_PATH))
+    os.makedirs(parent, exist_ok=True)
+    connection = sqlite3.connect(_PATH, timeout=10, isolation_level="DEFERRED")
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.executescript("""
+        CREATE TABLE IF NOT EXISTS recipes(
+            id TEXT PRIMARY KEY, uid TEXT NOT NULL, body TEXT NOT NULL,
+            rating INTEGER, cooked INTEGER NOT NULL DEFAULT 0,
+            at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS recipes_uid_at ON recipes(uid, at DESC);
+        CREATE TABLE IF NOT EXISTS weights(k TEXT PRIMARY KEY, a REAL NOT NULL, b REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS usage(uid TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
+            PRIMARY KEY(uid, day));
+        CREATE TABLE IF NOT EXISTS tiers(uid TEXT PRIMARY KEY, tier TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS payments(
+            payment_id TEXT PRIMARY KEY, uid TEXT NOT NULL, tier TEXT NOT NULL,
+            amount TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    return connection
+
+
+@contextmanager
 def db():
-    c = sqlite3.connect(PATH, check_same_thread=False); c.row_factory = sqlite3.Row
-    c.executescript("""create table if not exists recipes(id text primary key, uid text, body text, rating int, cooked int default 0, at text default current_timestamp);
-    create table if not exists weights(k text primary key, a real, b real);
-    create table if not exists usage(uid text, day text, n int, primary key(uid, day));
-    create table if not exists tiers(uid text primary key, tier text);""")
-    return c
+    connection = _connect()
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def initialize():
+    with _LOCK, db():
+        pass
+
+
 def weights():
-    with _L, db() as c: return {r["k"]: (r["a"], r["b"]) for r in c.execute("select * from weights")}
-def save_weights(w):
-    with _L, db() as c: c.executemany("insert into weights values(?,?,?) on conflict(k) do update set a=excluded.a,b=excluded.b", [(k, *v) for k, v in w.items()])
-def add_recipe(uid, r):
-    with _L, db() as c: c.execute("insert into recipes(id,uid,body) values(?,?,?)", (r["id"], uid, json.dumps(r)))
+    with _LOCK, db() as connection:
+        return {row["k"]: (row["a"], row["b"]) for row in connection.execute("SELECT * FROM weights")}
+
+
+def save_weights(values):
+    with _LOCK, db() as connection:
+        connection.executemany(
+            "INSERT INTO weights VALUES(?,?,?) ON CONFLICT(k) DO UPDATE SET a=excluded.a,b=excluded.b",
+            [(key, *value) for key, value in values.items()],
+        )
+
+
+def add_recipe(uid, recipe):
+    with _LOCK, db() as connection:
+        connection.execute("INSERT INTO recipes(id,uid,body) VALUES(?,?,?)", (recipe["id"], uid, json.dumps(recipe)))
+
+
 def recipes(uid, n=30):
-    with _L, db() as c: return [json.loads(r["body"]) | {"rating": r["rating"], "cooked": bool(r["cooked"])} for r in c.execute("select * from recipes where uid=? order by at desc limit ?", (uid, n))]
+    with _LOCK, db() as connection:
+        rows = connection.execute(
+            "SELECT body,rating,cooked FROM recipes WHERE uid=? ORDER BY at DESC LIMIT ?", (uid, n)
+        )
+        return [json.loads(row["body"]) | {"rating": row["rating"], "cooked": bool(row["cooked"])} for row in rows]
+
+
 def get(uid, rid):
-    with _L, db() as c:
-        r = c.execute("select * from recipes where id=? and uid=?", (rid, uid)).fetchone(); return r and json.loads(r["body"])
+    with _LOCK, db() as connection:
+        row = connection.execute("SELECT body FROM recipes WHERE id=? AND uid=?", (rid, uid)).fetchone()
+        return row and json.loads(row["body"])
+
+
 def mark(uid, rid, rating, cooked):
-    with _L, db() as c: c.execute("update recipes set rating=coalesce(?,rating), cooked=max(cooked,?) where id=? and uid=?", (rating, int(cooked), rid, uid))
+    with _LOCK, db() as connection:
+        connection.execute(
+            "UPDATE recipes SET rating=coalesce(?,rating), cooked=max(cooked,?) WHERE id=? AND uid=?",
+            (rating, int(cooked), rid, uid),
+        )
+
+
 def use(uid, day, limit):
-    with _L, db() as c:
-        n = (c.execute("select n from usage where uid=? and day=?", (uid, day)).fetchone() or [0])[0]
-        if n >= limit: return False
-        c.execute("insert into usage values(?,?,1) on conflict(uid,day) do update set n=n+1", (uid, day)); return True
+    with _LOCK, db() as connection:
+        row = connection.execute(
+            "INSERT INTO usage(uid,day,n) VALUES(?,?,1) "
+            "ON CONFLICT(uid,day) DO UPDATE SET n=n+1 WHERE usage.n < ? RETURNING n",
+            (uid, day, limit),
+        ).fetchone()
+        return row is not None
+
+
 def tier(uid):
-    with _L, db() as c: r = c.execute("select tier from tiers where uid=?", (uid,)).fetchone(); return r and r["tier"]
-def set_tier(uid, t):
-    with _L, db() as c: c.execute("insert into tiers values(?,?) on conflict(uid) do update set tier=excluded.tier", (uid, t))
+    with _LOCK, db() as connection:
+        row = connection.execute("SELECT tier FROM tiers WHERE uid=?", (uid,)).fetchone()
+        return row and row["tier"]
+
+
+def record_payment(payment_id, uid, tier_name, amount):
+    """Apply one verified ITN exactly once, even when PayFast retries it."""
+    with _LOCK, db() as connection:
+        cursor = connection.execute(
+            "INSERT OR IGNORE INTO payments(payment_id,uid,tier,amount) VALUES(?,?,?,?)",
+            (payment_id, uid, tier_name, amount),
+        )
+        if cursor.rowcount:
+            connection.execute(
+                "INSERT INTO tiers(uid,tier) VALUES(?,?) "
+                "ON CONFLICT(uid) DO UPDATE SET tier=excluded.tier", (uid, tier_name)
+            )
+        return bool(cursor.rowcount)
+
