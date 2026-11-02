@@ -1,5 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 const API = import.meta.env.VITE_API_URL ?? "";
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL ?? "").replace(/\/$/, "");
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+type Session = { access_token: string; refresh_token: string; expires_at?: number };
+const readSession = (): Session | null => { try { return JSON.parse(localStorage.getItem("supabase_session") || "null"); } catch { return null; } };
+const saveSession = (session: Session) => { localStorage.setItem("supabase_session", JSON.stringify(session)); localStorage.setItem("token", session.access_token); };
+async function refreshSession(): Promise<boolean> {
+  const current = readSession();
+  if (!current?.refresh_token || !SUPABASE_URL || !SUPABASE_KEY) return false;
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY }, body: JSON.stringify({ refresh_token: current.refresh_token }) });
+  if (!response.ok) { localStorage.removeItem("supabase_session"); localStorage.removeItem("token"); return false; }
+  const value = await response.json(); saveSession({ ...value, expires_at: Date.now() + (value.expires_in ?? 3600) * 1000 }); return true;
+}
 const PERSONAS = [
   { id: "zanele", ini: "AZ", name: "Auntie Zanele", tag: "Comfort food, big flavour", bio: "Generous, warm, and deeply practical. She knows how to stretch a pantry." },
   { id: "jabu", ini: "BJ", name: "Braai Boss Jabu", tag: "Fire, smoke, and confidence", bio: "Bold and direct, with a soft spot for clever shortcuts and a good char." },
@@ -9,7 +21,8 @@ const PERSONAS = [
 type Recipe = { id: string; title: string; persona_name: string; intro: string; serves: number; minutes: number; ingredients: { item: string; amount: string }[]; steps: string[]; notes: string[]; rating?: number | null; cooked?: boolean };
 const uid = (): Record<string, string> => { const t = localStorage.getItem("token"); return t ? { Authorization: `Bearer ${t}` } : {}; };
 async function api<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(API + path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...uid() }, body: body ? JSON.stringify(body) : undefined });
+  let r = await fetch(API + path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...uid() }, body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401 && await refreshSession()) r = await fetch(API + path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...uid() }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "Something went wrong. Try again.");
   return j;
 }
@@ -17,8 +30,22 @@ export default function App() {
   const [persona, setPersona] = useState("zanele"), [ing, setIng] = useState(""), [diet, setDiet] = useState(""), [serves, setServes] = useState(4), [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [recipe, setRecipe] = useState<Recipe | null>(null), [recent, setRecent] = useState<Recipe[]>([]), [all, setAll] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  const [session, setSession] = useState<Session | null>(() => readSession());
+  const [email, setEmail] = useState(""), [password, setPassword] = useState(""), [authMode, setAuthMode] = useState<"signin" | "signup">("signin"), [authBusy, setAuthBusy] = useState(false), [authErr, setAuthErr] = useState("");
+  async function authenticate(e: FormEvent) {
+    e.preventDefault(); setAuthBusy(true); setAuthErr("");
+    try {
+      const signup = authMode === "signup";
+      const response = await fetch(`${SUPABASE_URL}/auth/v1/${signup ? "signup" : "token?grant_type=password"}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY }, body: JSON.stringify({ email, password }) });
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(value.msg || value.message || value.error_description || "Sign in failed. Check your details and try again.");
+      if (!value.access_token) { setAuthErr("Check your email to confirm your account, then sign in."); setAuthMode("signin"); return; }
+      const next = { ...value, expires_at: Date.now() + (value.expires_in ?? 3600) * 1000 } as Session; saveSession(next); setSession(next);
+    } catch (error) { setAuthErr((error as Error).message); } finally { setAuthBusy(false); }
+  }
+  function signOut() { localStorage.removeItem("supabase_session"); localStorage.removeItem("token"); localStorage.removeItem("recent"); setRecent([]); setSession(null); }
   useEffect(() => { const f = () => setOnline(navigator.onLine); addEventListener("online", f); addEventListener("offline", f); return () => { removeEventListener("online", f); removeEventListener("offline", f); }; }, []);
-  useEffect(() => { api<Recipe[]>("/api/recipes").then(r => { setRecent(r); localStorage.setItem("recent", JSON.stringify(r)); }).catch(() => setRecent(JSON.parse(localStorage.getItem("recent") || "[]"))); }, []);
+  useEffect(() => { api<Recipe[]>("/api/recipes").then(r => { setRecent(r); localStorage.setItem("recent", JSON.stringify(r)); }).catch(() => setRecent(JSON.parse(localStorage.getItem("recent") || "[]"))); }, [session?.access_token]);
   async function go(regen = false) {
     if (regen && recipe) api(`/api/recipes/${recipe.id}/feedback`, { regenerated: true }).catch(() => {});
     setBusy(true); setErr("");
@@ -30,6 +57,8 @@ export default function App() {
   return (<>
     <header className="top"><div className="logo" aria-hidden>👨‍🍳</div><div><b className="serif brand">SpazaChef</b><small className="mono">Cook what's here</small></div><button className="icon" aria-label="Menu">☰</button></header>
     <main>
+      {SUPABASE_URL && SUPABASE_KEY && !session ? <section className="card"><p className="mono eyebrow">Your kitchen, saved</p><h1 className="serif">Sign in to <em>SpazaChef</em></h1><form onSubmit={authenticate}><label>Email<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} /></label><label>Password<input type="password" autoComplete={authMode === "signin" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={e => setPassword(e.target.value)} /></label>{authErr && <p className="err" role="alert">{authErr}</p>}<button className="cta" disabled={authBusy}>{authBusy ? "Please wait…" : authMode === "signin" ? "Sign in" : "Create account"}</button></form><button className="link" onClick={() => { setAuthMode(authMode === "signin" ? "signup" : "signin"); setAuthErr(""); }}>{authMode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}</button></section> : <>
+      {session && <button className="link" onClick={signOut}>Sign out</button>}
       {!online && <p className="banner" role="status">Offline mode: saved recipes are available.</p>}
       <span className="pill mono">Supper, sorted</span>
       <h1 className="serif">What's in the <em>spaza?</em></h1>
@@ -54,5 +83,7 @@ export default function App() {
       <div className="head"><h2 className="serif big">Recent recipes</h2>{recent.length > 3 && <button className="link" onClick={() => setAll(!all)}>{all ? "Show less" : "See all ›"}</button>}</div>
       {recent.length === 0 ? <div className="empty"><span aria-hidden>⟲</span><h3 className="serif">No recipes in the book yet.</h3><p>Your next good idea will show up here.</p></div>
         : shown.map(r => <button key={r.id} className="past" onClick={() => { setRecipe(r); scrollTo({ top: 0, behavior: "smooth" }); }}><b className="serif">{r.title}</b><span className="mono">{r.persona_name} · {r.minutes} min</span></button>)}
+      </>}
     </main></>);
 }
+
