@@ -14,7 +14,7 @@ Copy `.env.example` into the backend deployment environment and set real values.
 
 Use a persistent mounted volume for the absolute `DATABASE_PATH`. This SQLite deployment profile is for one backend instance on a durable local volume. Do not scale it across ephemeral or multi-region instances; use managed Postgres and a migration/repository layer for that deployment model. Back up the database and test restores before launch.
 
-PayFast plans are granted only after the ITN signature, merchant, amount, server validation, and unique payment ID are checked. Configure the exact merchant ID and passphrase on the backend. Use `PAYFAST_SANDBOX=true` only with sandbox credentials. The UI still needs an authenticated checkout flow that creates the signed PayFast payment request; do not grant tiers from client input.
+The authenticated `POST /api/payfast/checkout` endpoint creates a pending order and returns a server-signed PayFast form for the selected tier; the UI posts those fields directly to PayFast. Configure the merchant ID, merchant key, passphrase, and HTTPS return/cancel/notify URLs. ITN tier grants require a valid signature, matching merchant and server-verified payment, and a pending server-created order with the expected amount, user, and tier. Duplicate notifications are idempotent. Use `PAYFAST_SANDBOX=true` only with sandbox credentials. The current Basic and Premium amounts are one-time payments, and tiers remain active indefinitely; implement expiry or recurring billing before advertising time-limited subscriptions.
 
 Place the API behind HTTPS and a gateway with request-size limits, abuse controls, and monitoring. Configure CORS to the exact frontend origin. Health checks are unauthenticated and return no deployment secrets.
 
