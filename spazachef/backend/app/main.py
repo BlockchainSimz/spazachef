@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import os
 import datetime as dt
+import uuid
+from contextlib import asynccontextmanager
 from urllib.parse import parse_qsl, quote_plus
 
 import httpx
@@ -15,6 +17,7 @@ from . import engine, store
 
 QUOTA = {"free": 5, "basic": 30, "premium": 10_000}
 PRICE_TIER = {"15.00": "basic", "99.00": "premium"}
+TIER_PRICE = {tier: amount for amount, tier in PRICE_TIER.items()}
 ENV = os.getenv("ENV", "development").lower()
 IS_PRODUCTION = ENV == "production"
 
@@ -28,10 +31,17 @@ def configured_origins() -> list[str]:
     return values
 
 
+@asynccontextmanager
+async def lifespan(_app):
+    validate_production_configuration()
+    yield
+
+
 app = FastAPI(
     title="SpazaChef API",
     docs_url=None if IS_PRODUCTION else "/docs",
     redoc_url=None if IS_PRODUCTION else "/redoc",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +53,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
 def validate_production_configuration() -> None:
     if not IS_PRODUCTION:
         return
@@ -54,6 +63,15 @@ def validate_production_configuration() -> None:
     path = os.getenv("DATABASE_PATH", "")
     if not path or not os.path.isabs(path):
         raise RuntimeError("DATABASE_PATH must be an absolute path to persistent storage in production")
+    payment_configuration = (
+        "PAYFAST_MERCHANT_ID", "PAYFAST_MERCHANT_KEY", "PAYFAST_PASSPHRASE",
+        "PAYFAST_RETURN_URL", "PAYFAST_CANCEL_URL", "PAYFAST_NOTIFY_URL",
+    )
+    if any(not os.getenv(key) for key in payment_configuration):
+        raise RuntimeError("PayFast credentials and callback URLs are required in production")
+    for key in ("PAYFAST_RETURN_URL", "PAYFAST_CANCEL_URL", "PAYFAST_NOTIFY_URL"):
+        if not os.getenv(key, "").startswith("https://"):
+            raise RuntimeError(f"{key} must use HTTPS in production")
     store.initialize()
 
 
@@ -96,6 +114,11 @@ class Feedback(BaseModel):
     rating: int | None = Field(None, ge=1, le=5)
     cooked: bool = False
     regenerated: bool = False
+
+
+class CheckoutRequest(BaseModel):
+    tier: str = Field(pattern="^(basic|premium)$")
+    email: str = Field(min_length=6, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def user_id(authorization: str | None) -> tuple[str, str]:
@@ -147,6 +170,37 @@ def payfast_signature(pairs: list[tuple[str, str]], passphrase: str | None) -> t
     return signature, validation_body
 
 
+@app.post("/api/payfast/checkout")
+def checkout(b: CheckoutRequest, authorization: str | None = Header(None)):
+    uid, _ = who(authorization)
+    merchant_id = os.getenv("PAYFAST_MERCHANT_ID")
+    merchant_key = os.getenv("PAYFAST_MERCHANT_KEY")
+    passphrase = os.getenv("PAYFAST_PASSPHRASE")
+    if not all((merchant_id, merchant_key, passphrase)):
+        raise HTTPException(503, "PayFast checkout is not configured.")
+
+    amount = TIER_PRICE[b.tier]
+    order_id = uuid.uuid4().hex
+    pairs = [
+        ("merchant_id", merchant_id),
+        ("merchant_key", merchant_key),
+        ("return_url", os.getenv("PAYFAST_RETURN_URL", "")),
+        ("cancel_url", os.getenv("PAYFAST_CANCEL_URL", "")),
+        ("notify_url", os.getenv("PAYFAST_NOTIFY_URL", "")),
+        ("email_address", b.email.strip()),
+        ("m_payment_id", order_id),
+        ("amount", amount),
+        ("item_name", f"SpazaChef {b.tier.title()}"),
+        ("custom_str1", uid),
+    ]
+    signature, _ = payfast_signature(pairs, passphrase)
+    store.create_checkout_order(order_id, uid, b.tier, amount)
+    fields = dict(pairs)
+    fields["signature"] = signature
+    host = "sandbox.payfast.co.za" if os.getenv("PAYFAST_SANDBOX", "false").lower() == "true" else "www.payfast.co.za"
+    return {"action": f"https://{host}/eng/process", "fields": fields}
+
+
 @app.post("/api/payfast/itn")
 async def itn(req: Request):
     raw = (await req.body()).decode("utf-8", errors="strict")
@@ -181,6 +235,7 @@ async def itn(req: Request):
         raise HTTPException(503, "Payment verification is temporarily unavailable.") from exc
     if response.status_code != 200 or response.text.strip() != "VALID":
         raise HTTPException(400, "Payment verification failed.")
-    store.record_payment(payment_id, uid, tier, data["amount_gross"])
+    if not store.record_payment(payment_id, data.get("m_payment_id", ""), uid, tier, data["amount_gross"]):
+        raise HTTPException(400, "Payment does not match a pending SpazaChef order.")
     return "OK"
 
