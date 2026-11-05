@@ -3,7 +3,7 @@
 ## Your Direct Connection String
 
 ```
-DATABASE_URL=<configured-in-deployment>
+[Connection string is configured in the deployment environment.]
 ```
 
 **⚠️ IMPORTANT**: This contains your database password. Keep it **SECRET**!
@@ -18,7 +18,7 @@ DATABASE_URL=<configured-in-deployment>
 | **Port** | `5432` |
 | **Database** | `postgres` |
 | **User** | `postgres` |
-| **Password** | `[REDACTED]` |
+| **Password** | `[[REDACTED]]` |
 
 ---
 
@@ -26,19 +26,19 @@ DATABASE_URL=<configured-in-deployment>
 
 ### ✅ Backend (.env)
 ```bash
-DATABASE_URL=DATABASE_URL=<configured-in-deployment>
+[Connection string is configured in the deployment environment.]
 ```
 
 ### ✅ Local Development
 ```bash
 # .env file (never commit)
-DATABASE_URL=DATABASE_URL=<configured-in-deployment>
+[Connection string is configured in the deployment environment.]
 ```
 
 ### ✅ Vercel Backend Deployment
 Add to **Project Settings** → **Environment Variables**:
 ```
-DATABASE_URL = DATABASE_URL=<configured-in-deployment>
+[Connection string is configured in the deployment environment.]
 ```
 
 ### ❌ Frontend
@@ -53,7 +53,7 @@ DATABASE_URL = DATABASE_URL=<configured-in-deployment>
 
 ### From Command Line (psql)
 ```bash
-psql DATABASE_URL=<configured-in-deployment>
+[Connection string is configured in the deployment environment.]
 
 # Should show:
 # psql (14.0, server 14.x)
@@ -65,7 +65,7 @@ psql DATABASE_URL=<configured-in-deployment>
 ```python
 from sqlalchemy import create_engine
 
-DATABASE_URL = "DATABASE_URL=<configured-in-deployment>"
+[Connection string is configured in the deployment environment.]
 engine = create_engine(DATABASE_URL)
 
 # Test connection
@@ -92,7 +92,7 @@ The backend is already configured to use this connection string. In `backend/app
 
 ```python
 class Settings(BaseSettings):
-    DATABASE_URL: str = "DATABASE_URL=<configured-in-deployment>"  # Will use env var when deployed
+[Connection string is configured in the deployment environment.]
 ```
 
 When you set `DATABASE_URL` in Vercel environment variables, SQLAlchemy will automatically connect to your Supabase database.
@@ -105,7 +105,7 @@ To run migrations against your Supabase database:
 
 ```bash
 # Local development
-export DATABASE_URL=DATABASE_URL=<configured-in-deployment>
+[Connection string is configured in the deployment environment.]
 alembic upgrade head
 
 # Or with the connection string directly
@@ -168,7 +168,7 @@ POST /api/v1/recipes/search  # Search recipes
 - Check Supabase project is running
 
 ### "Authentication failed"
-- Check password: `[REDACTED]`
+- Check password: `[[REDACTED]]`
 - Verify username: `postgres`
 - Try resetting password in Supabase Dashboard
 
@@ -193,9 +193,9 @@ POST /api/v1/recipes/search  # Search recipes
 Breaking down the full connection string:
 
 ```
-postgresql://
+[Connection string is configured in the deployment environment.]
   postgres              ← username
-  :[REDACTED]     ← password
+  :[[REDACTED]]     ← password
   @db.<PROJECT_REF>.supabase.co  ← host
   :5432                ← port
   /postgres            ← database name
@@ -209,7 +209,7 @@ All components are required. If any part is wrong, connection fails.
 
 ### FastAPI (Already Configured ✅)
 ```python
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL =<configured-in-deployment>
 engine = create_engine(DATABASE_URL)
 ```
 
@@ -220,7 +220,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'postgres',
         'USER': 'postgres',
-        'PASSWORD': '[REDACTED]',
+        'PASSWORD': '[[REDACTED]]',
         'HOST': 'db.<PROJECT_REF>.supabase.co',
         'PORT': '5432',
     }
@@ -251,10 +251,10 @@ conn = await asyncpg.connect(DATABASE_URL)
 ### Manual Backup
 ```bash
 # Dump your entire database
-pg_dump DATABASE_URL=<configured-in-deployment> > backup.sql
+[Connection string is configured in the deployment environment.]
 
 # Restore from backup
-psql DATABASE_URL=<configured-in-deployment> < backup.sql
+[Connection string is configured in the deployment environment.]
 ```
 
 ### Cloud Storage Backup
