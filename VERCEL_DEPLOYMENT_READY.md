@@ -41,7 +41,7 @@ Vercel automatically deploys when you push to GitHub. Since SpazaChef is already
    - **Build Command**: `pip install -r backend/requirements.txt`
    - **Add Environment Variables** (Settings → Environment Variables):
      ```
-     DATABASE_URL = DATABASE_URL=<configured-in-deployment>
+     DATABASE_URL =<configured-in-deployment>
      SUPABASE_URL = https://<PROJECT_REF>.supabase.co
      SUPABASE_ANON_KEY = sb_publishable_aQGYuHXVJ7xah8ZXlw0Bhw_P8uBOBnf
      SUPABASE_SERVICE_ROLE_KEY = [from Supabase Settings → API]
