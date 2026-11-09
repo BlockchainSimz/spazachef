@@ -3,10 +3,10 @@
 This directory contains the uploaded React/Vite PWA + FastAPI recipe application, staged separately from the repository's existing application. The existing `main` branch has not been overwritten.
 
 ## Layout
-- `frontend/`: React 18 + Vite PWA with Supabase email/password sign-up, sign-in, session restoration, automatic token refresh, password reset, and sign-out.
+- `frontend/`: React 18 + Vite PWA with Supabase email/password sign-up, sign-in, session restoration, automatic token refresh, password reset, password update, and sign-out.
 - `backend/app/engine.py`: local recipe composer and feedback-learning engine.
 - `backend/app/store.py`: SQLite persistence for recipes, usage, tiers, and learning weights.
-- `backend/app/main.py`: API entrypoint that validates Supabase JWTs using project JWKS (ES256/RS256) or a legacy HS256 JWT secret.
+- `backend/app/main.py`: validates asymmetric Supabase JWTs through project JWKS and verifies shared-secret HS256 tokens through the Supabase Auth `/user` endpoint.
 - `backend/tests/`: recipe-engine tests and authentication/payment security regression tests.
 - `PRODUCTION_READINESS_AUDIT.md`: engineering findings and release gates.
 
@@ -31,12 +31,14 @@ Configure the frontend build-time variables:
 
 Configure the backend:
 - `SUPABASE_URL`: same project URL; used to validate issuer and retrieve public signing keys from the project's JWKS endpoint.
-- `SUPABASE_JWT_SECRET`: only needed for legacy HS256-signed access tokens.
+- `SUPABASE_PUBLISHABLE_KEY`: project publishable key used for Auth-server validation of HS256 access tokens. This is not a secret key.
 - `ORIGINS`: comma-separated exact frontend origins.
 
 ## Security and payment status
-- Authentication fails closed when no verifier is configured; missing/invalid Bearer tokens are rejected.
-- The browser uses the Supabase SDK session store and access token; it does not manually copy tokens into an unrelated localStorage key.
+- Authentication fails closed when Supabase URL or publishable key is not configured; missing/invalid Bearer tokens are rejected.
+- Asymmetric ES256/RS256 JWTs are verified against the project's JWKS and expected issuer/audience.
+- Shared-secret HS256 tokens are verified by Supabase Auth `/auth/v1/user`; this application does not store or expose the legacy JWT signing secret.
+- The browser uses the Supabase SDK session store and current access token; it does not manually copy tokens into an unrelated localStorage key.
 - User-specific recent-recipe cache is namespaced by Supabase user ID.
 - Unknown subscription tiers fall back to free.
 - Invalid recipe generation is validated before daily quota consumption.
@@ -46,7 +48,7 @@ Configure the backend:
 - SQLite and process-local locking are not suitable for horizontally scaled production quota enforcement; migrate recipes, tiers, usage, and weights to managed Postgres with transactions and migrations.
 - Shared rate limiting is still absent.
 - Dietary/allergen matching and food-safety instructions need additional hardening.
-- Configure environment variables in the actual frontend/backend deployment environments and complete an end-to-end Supabase signup/login/API test. No production Vercel project is currently linked to this isolated directory.
+- Configure environment variables in the actual frontend/backend deployment environments and complete an end-to-end Supabase signup/login/API test. No Vercel project is currently linked to this isolated directory.
 - Frontend lockfile still needs regeneration and commit after adding the Supabase SDK dependency; CI currently uses `npm install` until that lockfile is restored.
 - No live PayFast, backup/restore, monitoring, or production deployment verification has been performed.
 
