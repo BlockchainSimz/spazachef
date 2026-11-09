@@ -6,23 +6,23 @@
 
 ## Verification performed
 - Initial backend suite: 3 passed.
-- Backend security hardening regression suite: 7 passed locally in the previous patch.
-- Additional JWT success-path test added; latest GitHub branch test run is pending CI.
+- Previous security patch: 7 backend tests passed locally.
+- Current branch adds successful and rejected HS256 Auth-server verification tests; latest GitHub branch CI is pending.
 - Frontend build: not yet verified after adding the Supabase SDK and auth screens.
 - Live Supabase signup, confirmation email, password reset, browser session refresh, and API JWT verification: not yet exercised end-to-end.
 - Live PayFast callbacks, production database, backups, monitoring, and deployment: not verified.
 
 ## Implemented in this staging patch
-1. **Fail-closed authentication:** API requires a Bearer JWT and returns 503 when no JWT verifier is configured.
-2. **Supabase signing-key compatibility:** API supports project JWKS verification for asymmetric ES256/RS256 tokens and legacy HS256 verification when the JWT secret is configured. It validates the authenticated audience and project issuer.
-3. **Customer auth flow:** React UI now includes email/password sign-up, sign-in, session restoration, automatic refresh, password reset email, password update after recovery, and sign-out.
+1. **Fail-closed authentication:** API requires a Bearer JWT and returns 503 when Supabase verification configuration is missing.
+2. **Supabase signing-key compatibility:** asymmetric ES256/RS256 access tokens are verified with the project's public JWKS, expected issuer, and authenticated audience. HS256 tokens are validated by calling the project's Auth `/auth/v1/user` endpoint with the publishable key; the backend does not store the legacy signing secret.
+3. **Customer auth flow:** React UI includes email/password sign-up, sign-in, session restoration, automatic refresh, password reset email, password update after recovery, and sign-out.
 4. **Session handling:** API requests use the Supabase SDK's current access token; recent recipe cache is isolated by user ID.
 5. **Payment protection:** PayFast ITN cannot grant paid tiers while provider validation and order reconciliation are missing.
 6. **Quota sequencing:** recipe generation is validated before daily quota consumption.
 7. **CI:** adds frontend build and backend test jobs for changes under `spazachef-v2/`.
 
 ## Remaining critical/high-priority blockers
-1. **Deployment environment is not configured.** Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` for the frontend and `SUPABASE_URL`, `ORIGINS`, and storage settings for the backend. Do not expose `SUPABASE_JWT_SECRET` or any Supabase secret/service-role key to the browser.
+1. **Deployment environment is not configured.** Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` for the frontend and `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `ORIGINS`, and storage settings for the backend. Never expose a Supabase secret/service-role key to the browser.
 2. **Frontend build and CI are pending.** The lockfile must be regenerated after the new SDK dependency is added; CI currently uses npm install rather than npm ci.
 3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project.
 4. **SQLite is single-node persistence.** Process-local locking cannot safely enforce quotas across multiple workers/instances. Migrate recipes, tiers, usage, and weights to managed Postgres with transactions and migrations.
