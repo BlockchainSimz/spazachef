@@ -1,16 +1,17 @@
 # SpazaChef v2 — isolated source import and hardening
 
-This directory contains the uploaded React/Vite PWA + FastAPI recipe application, staged separately from the repository's existing application. The existing `main` branch has not been overwritten.
+This directory contains the React/Vite PWA + FastAPI recipe application, staged separately from the repository's existing application. The existing `main` branch has not been overwritten.
 
 ## Layout
-- `frontend/`: React 18 + Vite PWA with Supabase email/password sign-up, sign-in, session restoration, automatic token refresh, password reset, password update, and sign-out.
+- `frontend/`: React + Vite PWA with Supabase email/password sign-up, sign-in, session restoration, password recovery, and sign-out.
 - `backend/app/engine.py`: local recipe composer and feedback-learning engine.
-- `backend/app/store.py`: Supabase Postgres persistence for recipes, usage, tiers, and learning weights.
-- `backend/app/main.py`: validates asymmetric Supabase JWTs through project JWKS and verifies shared-secret HS256 tokens through the Supabase Auth `/user` endpoint.
-- `backend/tests/`: recipe-engine tests and authentication/payment security regression tests.
+- `backend/app/store.py`: Supabase Postgres persistence for recipes, usage, tiers, and learning weights. Daily quota consumption is atomic across API workers.
+- `backend/app/main.py`: validates ES256/RS256 access tokens through project JWKS and legacy HS256 tokens through the Supabase Auth `/user` endpoint.
+- `backend/tests/`: recipe-engine and auth/payment regression tests.
 - `PRODUCTION_READINESS_AUDIT.md`: engineering findings and release gates.
 
 ## Local development
+
 Backend:
 ```bash
 cd backend
@@ -18,39 +19,54 @@ python -m pip install -r requirements.txt
 PYTHONPATH=. pytest -q
 uvicorn app.main:app --reload
 ```
+
 Frontend:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Configure the frontend build-time variables:
+
+### Frontend environment
 - `VITE_SUPABASE_URL`: Supabase project URL.
-- `VITE_SUPABASE_PUBLISHABLE_KEY`: Supabase publishable key (safe for browser use; never use a secret/service-role key).
+- `VITE_SUPABASE_PUBLISHABLE_KEY`: publishable key only; safe for browser use.
 - `VITE_API_URL`: API origin; leave empty when using the Vite `/api` development proxy.
 
-Configure the backend:
-- `SUPABASE_URL`: same project URL; used to validate issuer and retrieve public signing keys from the project's JWKS endpoint.
-- `SUPABASE_PUBLISHABLE_KEY`: project publishable key used for Auth-server validation of HS256 access tokens. This is not a secret key.
+### Backend environment
+- `SUPABASE_URL`: Supabase project URL.
+- `SUPABASE_PUBLISHABLE_KEY`: publishable key used when validating legacy HS256 sessions with Supabase Auth.
+- `DATABASE_URL`: privileged Postgres connection string from Supabase **Connect**. Keep this server-side secret; never prefix it with `VITE_`. Use a suitable Supavisor connection mode for the chosen host.
 - `ORIGINS`: comma-separated exact frontend origins.
 
-## Security and payment status
-- Authentication fails closed when Supabase URL or publishable key is not configured; missing/invalid Bearer tokens are rejected.
-- Asymmetric ES256/RS256 JWTs are verified against the project's JWKS and expected issuer/audience.
-- Shared-secret HS256 tokens are verified by Supabase Auth `/auth/v1/user`; this application does not store or expose the legacy JWT signing secret.
-- The browser uses the Supabase SDK session store and current access token; it does not manually copy tokens into an unrelated localStorage key.
-- User-specific recent-recipe cache is namespaced by Supabase user ID.
-- Unknown subscription tiers fall back to free.
-- Invalid recipe generation is validated before daily quota consumption.
-- PayFast ITN cannot grant paid tiers until provider source validation, server-side order matching, amount/currency verification, transaction idempotency, and audit logging are implemented.
+The backend uses SSL for Postgres connections and disables prepared statements for compatibility with transaction poolers. SQLite is no longer used.
 
-## Known production blockers
-- SQLite and process-local locking are not suitable for horizontally scaled production quota enforcement; migrate recipes, tiers, usage, and weights to managed Postgres with transactions and migrations.
-- Shared rate limiting is still absent.
-- Dietary/allergen matching and food-safety instructions need additional hardening.
-- Configure environment variables in the actual frontend/backend deployment environments and complete an end-to-end Supabase signup/login/API test. No Vercel project is currently linked to this isolated directory.
-- Frontend lockfile still needs regeneration and commit after adding the Supabase SDK dependency; CI currently uses `npm install` until that lockfile is restored.
-- No live PayFast, backup/restore, monitoring, or production deployment verification has been performed.
+## Database
+The active Supabase project has the following tables:
+- `public.recipes`: user-owned recipe JSON, ratings, and cooked status.
+- `public.usage`: per-user, per-day recipe counts.
+- `public.tiers`: server-managed subscription tier.
+- `public.weights`: global recipe-learning weights, private to the backend.
+
+RLS is enabled on all four tables. Recipe and account rows have user-ownership policies; global weights have a deny-all authenticated policy. API operations use a privileged backend-only database connection and always scope user records by the verified Supabase user ID. Daily quota use is an atomic Postgres upsert.
+
+The schema is applied to the connected Supabase project. The tables are currently empty; no legacy SQLite data has been imported.
+
+## Security and payment status
+- Missing Supabase auth configuration fails closed.
+- ES256/RS256 tokens are verified against project JWKS, issuer, and audience.
+- HS256 tokens are verified by Supabase Auth `/auth/v1/user`; the backend does not keep or expose the legacy JWT signing secret.
+- Database outages return service-unavailable responses rather than being misreported as invalid credentials.
+- Unknown tiers fall back to free.
+- PayFast ITN remains disabled until provider-source verification, pending-order reconciliation, amount/currency checks, ownership checks, idempotency, and audit records are implemented.
+
+## Remaining production blockers
+- Set the actual backend `DATABASE_URL` secret and verify connectivity from the deployment runtime.
+- Complete a live signup/login/session refresh/password recovery/API smoke test.
+- Regenerate and commit the frontend lockfile; verify frontend production build and GitHub Actions.
+- Configure and deploy the frontend and FastAPI backend; no Vercel project is currently linked to this isolated app.
+- Add shared rate limiting, structured logs, monitoring, alerts, backup/restore tests, retention/deletion workflows, and rollback procedures.
+- Harden dietary/allergen matching and food-safety guidance.
+- Existing SQLite data has not been migrated; import only if it contains data that must be retained.
 
 ## Release decision
-**Not production ready.** Treat this branch as an isolated staging/import PR, not a deployable release. Do not enable payments or merge into the existing application until the blockers and tests are resolved.
+**Not production ready.** This is an isolated staging branch, not a deployable release. Do not enable payments or merge into the existing application until the remaining blockers and tests are resolved.
