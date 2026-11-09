@@ -5,7 +5,7 @@ This directory contains the uploaded React/Vite PWA + FastAPI recipe application
 ## Layout
 - `frontend/`: React 18 + Vite PWA with Supabase email/password sign-up, sign-in, session restoration, automatic token refresh, password reset, password update, and sign-out.
 - `backend/app/engine.py`: local recipe composer and feedback-learning engine.
-- `backend/app/store.py`: SQLite persistence for recipes, usage, tiers, and learning weights.
+- `backend/app/store.py`: Supabase Postgres persistence for recipes, usage, tiers, and learning weights.
 - `backend/app/main.py`: validates asymmetric Supabase JWTs through project JWKS and verifies shared-secret HS256 tokens through the Supabase Auth `/user` endpoint.
 - `backend/tests/`: recipe-engine tests and authentication/payment security regression tests.
 - `PRODUCTION_READINESS_AUDIT.md`: engineering findings and release gates.
