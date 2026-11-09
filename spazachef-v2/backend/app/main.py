@@ -1,11 +1,14 @@
 import os, datetime as dt
 import jwt
+from jwt import PyJWKClient
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from . import engine, store
 
 QUOTA = {"free": 5, "basic": 30, "premium": 10_000}
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+JWKS_CLIENT = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", cache_keys=True) if SUPABASE_URL else None
 app = FastAPI(title="SpazaChef API", docs_url=None if os.getenv("ENV") == "production" else "/docs")
 app.add_middleware(
     CORSMiddleware,
@@ -15,21 +18,32 @@ app.add_middleware(
 )
 
 def who(req: Request, auth):
-    """Require a verified Supabase access token; never downgrade to anonymous identity."""
-    secret = os.getenv("SUPABASE_JWT_SECRET")
-    if not secret:
-        raise HTTPException(503, "Authentication is not configured. Please try again later.")
+    """Verify Supabase JWTs using project JWKS (asymmetric) or legacy HS256 secret."""
     if not auth or not auth.startswith("Bearer "):
         raise HTTPException(401, "Sign in to continue.")
+    token = auth[7:]
     try:
-        claims = jwt.decode(auth[7:], secret, algorithms=["HS256"], audience="authenticated")
+        header = jwt.get_unverified_header(token)
+        if header.get("alg") in ("ES256", "RS256") and JWKS_CLIENT:
+            key = JWKS_CLIENT.get_signing_key_from_jwt(token).key
+            claims = jwt.decode(token, key, algorithms=["ES256", "RS256"], audience="authenticated",
+                                issuer=f"{SUPABASE_URL}/auth/v1")
+        elif header.get("alg") == "HS256" and os.getenv("SUPABASE_JWT_SECRET"):
+            claims = jwt.decode(token, os.environ["SUPABASE_JWT_SECRET"], algorithms=["HS256"],
+                                audience="authenticated",
+                                issuer=f"{SUPABASE_URL}/auth/v1" if SUPABASE_URL else None)
+        else:
+            raise HTTPException(401, "Your session uses an unsupported signing key. Sign in again.")
         uid = claims.get("sub")
         if not isinstance(uid, str) or not uid:
             raise HTTPException(401, "Your session is invalid. Sign in again.")
         tier = store.tier(uid) or claims.get("app_metadata", {}).get("tier", "free")
         return uid, tier if tier in QUOTA else "free"
-    except jwt.PyJWTError:
-        raise HTTPException(401, "Your session expired. Sign in again.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Do not disclose token, key, or verifier internals to the client.
+        raise HTTPException(401, "Your session is invalid or expired. Sign in again.") from exc
 
 class Brief(BaseModel):
     persona: str = "zanele"
@@ -75,6 +89,4 @@ def feedback(rid: str, f: Feedback, req: Request, authorization: str | None = He
 
 @app.post("/api/payfast/itn")
 async def itn(req: Request):
-    # Entitlement grants remain disabled until server-side orders, provider source
-    # validation, amount/currency matching, ownership checks, and idempotency exist.
     raise HTTPException(503, "Payment notifications are temporarily disabled pending secure verification.")
