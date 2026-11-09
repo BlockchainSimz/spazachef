@@ -19,6 +19,8 @@ app.add_middleware(
 
 def who(req: Request, auth):
     """Verify Supabase JWTs using project JWKS (asymmetric) or legacy HS256 secret."""
+    if not SUPABASE_URL and not os.getenv("SUPABASE_JWT_SECRET"):
+        raise HTTPException(503, "Authentication is not configured. Please try again later.")
     if not auth or not auth.startswith("Bearer "):
         raise HTTPException(401, "Sign in to continue.")
     token = auth[7:]
