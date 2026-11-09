@@ -2,6 +2,8 @@ import os
 import jwt
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
+import pytest
 from app.main import app, who
 
 client = TestClient(app)
