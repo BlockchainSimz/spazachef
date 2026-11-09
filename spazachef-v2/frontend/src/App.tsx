@@ -17,7 +17,12 @@ async function api<T>(path:string,body?:unknown):Promise<T>{
  if(!response.ok)throw new Error(typeof data.detail==="string"?data.detail:"Something went wrong. Try again.");
  return data;
 }
-function PasswordRecovery({onDone}:{onDone:()=>void}){\n const [password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");\n async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;setBusy(true);setError("");try{const {error}=await supabase.auth.updateUser({password});if(error)throw error;onDone()}catch(e){setError(e instanceof Error?e.message:"Password update failed.")}finally{setBusy(false)}}\n return <main className="auth-wrap"><section className="card auth-card"><span className="pill mono">Account recovery</span><h1>Choose a new password.</h1><form onSubmit={submit}><label>New password<input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters"/></label>{error&&<p className="err" role="alert">{error}</p>}<button className="cta" disabled={busy}>{busy?"Updating…":"Update password"}</button></form></section></main>\n}\nfunction AuthGate(){
+function PasswordRecovery({onDone}:{onDone:()=>void}){
+ const [password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;setBusy(true);setError("");try{const {error}=await supabase.auth.updateUser({password});if(error)throw error;onDone()}catch(e){setError(e instanceof Error?e.message:"Password update failed.")}finally{setBusy(false)}}
+ return <main className="auth-wrap"><section className="card auth-card"><span className="pill mono">Account recovery</span><h1>Choose a new password.</h1><form onSubmit={submit}><label>New password<input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters"/></label>{error&&<p className="err" role="alert">{error}</p>}<button className="cta" disabled={busy}>{busy?"Updating…":"Update password"}</button></form></section></main>
+}
+function AuthGate(){
  const [mode,setMode]=useState<"signin"|"signup"|"reset">("signin"),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;setBusy(true);setError("");setNotice("");
  try{
@@ -38,7 +43,8 @@ export default function App(){
  function rate(r:Recipe,rating?:number,cooked=false){api(`/api/recipes/${r.id}/feedback`,{rating,cooked}).catch(()=>{});const u={...r,rating:rating??r.rating,cooked:cooked||r.cooked};setRecipe(u);setRecent(x=>x.map(y=>y.id===r.id?u:y))}
  if(!authReady)return <div className="loading">Setting the table…</div>;
  if(!supabase)return <main className="auth-wrap"><section className="card auth-card"><h1>One quick setup.</h1><p className="lede">SpazaChef needs its Supabase project URL and publishable key configured before you can sign in.</p><p className="err">Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY.</p></section></main>;
- if(recoveryMode&&session)return <PasswordRecovery onDone={()=>setRecoveryMode(false)}/>;\n if(!session)return <><header className="top"><div className="logo" aria-hidden>👨‍🍳</div><div><b className="serif brand">SpazaChef</b><small className="mono">Cook what's here</small></div></header><AuthGate/></>;
+ if(recoveryMode&&session)return <PasswordRecovery onDone={()=>setRecoveryMode(false)}/>;
+ if(!session)return <><header className="top"><div className="logo" aria-hidden>👨‍🍳</div><div><b className="serif brand">SpazaChef</b><small className="mono">Cook what's here</small></div></header><AuthGate/></>;
  const shown=all?recent:recent.slice(0,3);
  return <><header className="top"><div className="logo" aria-hidden>👨‍🍳</div><div><b className="serif brand">SpazaChef</b><small className="mono">Cook what's here</small></div><div className="account"><small>{session.user.email}</small><button className="link" onClick={()=>supabase.auth.signOut()}>Sign out</button></div></header><main>
  {!online&&<p className="banner" role="status">Offline mode: saved recipes are available.</p>}<span className="pill mono">Supper, sorted</span><h1>What's in the <em>spaza?</em></h1><p className="lede">Tell us what's on hand. We'll turn it into something worth sitting down for.</p>
