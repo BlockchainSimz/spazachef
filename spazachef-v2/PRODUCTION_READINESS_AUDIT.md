@@ -5,26 +5,31 @@
 **Decision:** **NOT PRODUCTION READY — prototype / pre-production**
 
 ## Verification performed
-- Original backend tests: 3 passed.
-- After adding security regression tests and hardening the API entrypoint, backend tests: **7 passed locally**.
-- Frontend production build: **not verified**; dependency installation timed out, so `npm run build` was not reached.
-- Live Supabase authentication, database persistence, PayFast callbacks, backups, production monitoring, and deployment: **not verified**.
-- The source tree is now staged under `spazachef-v2/` on this isolated branch. The original package lockfile was not imported, so it must be regenerated and committed before CI/build verification.
+- Initial backend suite: 3 passed.
+- Backend security hardening regression suite: 7 passed locally in the previous patch.
+- Additional JWT success-path test added; latest GitHub branch test run is pending CI.
+- Frontend build: not yet verified after adding the Supabase SDK and auth screens.
+- Live Supabase signup, confirmation email, password reset, browser session refresh, and API JWT verification: not yet exercised end-to-end.
+- Live PayFast callbacks, production database, backups, monitoring, and deployment: not verified.
 
-## Resolved in this staging patch
-1. **Fail-open authentication:** protected endpoints now require a Bearer JWT; missing JWT configuration returns 503 and missing/invalid tokens return 401.
-2. **Unsafe payment entitlement grant:** PayFast ITN no longer grants paid tiers while full provider verification and order reconciliation are missing. Payments are deliberately fail-closed.
-3. **Quota on invalid input:** recipe generation occurs before daily quota consumption, so a rejected recipe brief does not consume quota.
-4. **Security regression coverage:** tests cover missing JWT secret, missing token, invalid token, and blocked PayFast entitlement grants.
+## Implemented in this staging patch
+1. **Fail-closed authentication:** API requires a Bearer JWT and returns 503 when no JWT verifier is configured.
+2. **Supabase signing-key compatibility:** API supports project JWKS verification for asymmetric ES256/RS256 tokens and legacy HS256 verification when the JWT secret is configured. It validates the authenticated audience and project issuer.
+3. **Customer auth flow:** React UI now includes email/password sign-up, sign-in, session restoration, automatic refresh, password reset email, password update after recovery, and sign-out.
+4. **Session handling:** API requests use the Supabase SDK's current access token; recent recipe cache is isolated by user ID.
+5. **Payment protection:** PayFast ITN cannot grant paid tiers while provider validation and order reconciliation are missing.
+6. **Quota sequencing:** recipe generation is validated before daily quota consumption.
+7. **CI:** adds frontend build and backend test jobs for changes under `spazachef-v2/`.
 
 ## Remaining critical/high-priority blockers
-1. **Frontend sign-in is missing.** The current React UI expects a token in localStorage but does not provide Supabase sign-in, sign-up, session restoration, or sign-out. This prevents a complete customer journey with the fail-closed API.
-2. **SQLite is single-node persistence.** Process-local locking cannot safely enforce quotas across multiple workers/instances. Migrate recipes, tiers, usage, and weights to managed Postgres with transactions and migrations.
-3. **Shared rate limiting is absent.** Do not trust raw `X-Forwarded-For`; implement a shared limiter using a trusted proxy or managed store.
-4. **PayFast is intentionally disabled.** Implement provider-source verification, server-side pending orders, amount/currency matching, ownership, unique transaction IDs, replay protection/idempotency, and audit records before re-enabling.
-5. **Dietary and food safety controls are incomplete.** Filtering is substring-based and may misclassify ingredients; allergen handling and safe internal-temperature guidance are absent.
-6. **Operational readiness is unverified.** Add health/readiness checks, structured logs, monitoring/alerts, database backup/restore tests, retention/deletion workflows, and deployment rollback procedures.
-7. **Frontend build is unverified.** Restore a lockfile, run a clean install and `npm run build`, and add CI.
+1. **Deployment environment is not configured.** Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` for the frontend and `SUPABASE_URL`, `ORIGINS`, and storage settings for the backend. Do not expose `SUPABASE_JWT_SECRET` or any Supabase secret/service-role key to the browser.
+2. **Frontend build and CI are pending.** The lockfile must be regenerated after the new SDK dependency is added; CI currently uses npm install rather than npm ci.
+3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project.
+4. **SQLite is single-node persistence.** Process-local locking cannot safely enforce quotas across multiple workers/instances. Migrate recipes, tiers, usage, and weights to managed Postgres with transactions and migrations.
+5. **Shared rate limiting is absent.** Implement a shared limiter using a trusted proxy or managed store.
+6. **PayFast is intentionally disabled.** Implement provider-source verification, server-side pending orders, amount/currency matching, ownership, unique transaction IDs, replay protection/idempotency, and audit records before re-enabling.
+7. **Dietary and food safety controls are incomplete.** Filtering is substring-based and may misclassify ingredients; allergen handling and safe internal-temperature guidance are absent.
+8. **Operational readiness is unverified.** Add health/readiness checks, structured logs, monitoring/alerts, database backup/restore tests, retention/deletion workflows, and deployment rollback procedures.
 
 ## Repository and release note
 The uploaded v2 application differs from the repository's existing `main` application. This source import is intentionally isolated under `spazachef-v2/` on a draft branch; it must not replace the existing app. No production deployment has been performed.
