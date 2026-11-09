@@ -6,7 +6,7 @@
 
 ## Verification performed
 - Initial backend suite: 3 passed.
-- Current backend suite: **9 passed locally** (3 recipe-engine tests and 6 authentication/payment regression tests).
+- Earlier backend snapshot: 9 tests passed locally. The current Postgres/auth refactor adds/changes regression tests and has **not yet been rerun** because the local environment cannot download the pinned psycopg driver; no GitHub Actions run has been returned.
 - Frontend production build remains unverified; GitHub Actions workflow was added, but no workflow run was returned by the status lookup.
 - Frontend build: not yet verified after adding the Supabase SDK and auth screens.
 - Live Supabase signup, confirmation email, password reset, browser session refresh, and API JWT verification: not yet exercised end-to-end.
@@ -25,7 +25,7 @@
 1. **Deployment environment is not configured.** Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` for the frontend and `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `ORIGINS`, and storage settings for the backend. Never expose a Supabase secret/service-role key to the browser.
 2. **Frontend build and CI are pending.** The lockfile must be regenerated after the new SDK dependency is added; CI currently uses npm install rather than npm ci.
 3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project.
-4. **Database connection is not configured or verified from the API runtime.** The backend now requires a privileged `DATABASE_URL` secret (never a `VITE_` variable) and uses psycopg over SSL. Configure it with the Supabase connection string and a suitable Supavisor pooler mode. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty.
+4. **Database connection is not configured or verified from the API runtime.** The backend now requires a privileged `DATABASE_URL` secret (never a `VITE_` variable) and uses psycopg over SSL. Configure it with the Supabase connection string and a suitable Supavisor pooler mode. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed four tables, RLS enabled on all four, seven policies, and no anon/authenticated table SELECT grants.
 5. **Shared rate limiting is absent.** Implement a shared limiter using a trusted proxy or managed store.
 6. **PayFast is intentionally disabled.** Implement provider-source verification, server-side pending orders, amount/currency matching, ownership, unique transaction IDs, replay protection/idempotency, and audit records before re-enabling.
 7. **Dietary and food safety controls are incomplete.** Filtering is substring-based and may misclassify ingredients; allergen handling and safe internal-temperature guidance are absent.
