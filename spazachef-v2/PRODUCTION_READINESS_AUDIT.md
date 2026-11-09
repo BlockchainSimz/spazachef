@@ -6,8 +6,8 @@
 
 ## Verification performed
 - Initial backend suite: 3 passed.
-- Previous security patch: 7 backend tests passed locally.
-- Current branch adds successful and rejected HS256 Auth-server verification tests; latest GitHub branch CI is pending.
+- Current backend suite: **9 passed locally** (3 recipe-engine tests and 6 authentication/payment regression tests).
+- Frontend production build remains unverified; GitHub Actions workflow was added, but no workflow run was returned by the status lookup.
 - Frontend build: not yet verified after adding the Supabase SDK and auth screens.
 - Live Supabase signup, confirmation email, password reset, browser session refresh, and API JWT verification: not yet exercised end-to-end.
 - Live PayFast callbacks, production database, backups, monitoring, and deployment: not verified.
