@@ -1,4 +1,7 @@
-import os, datetime as dt
+import os
+import datetime as dt
+
+import httpx
 import jwt
 from jwt import PyJWKClient
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -8,44 +11,87 @@ from . import engine, store
 
 QUOTA = {"free": 5, "basic": 30, "premium": 10_000}
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-JWKS_CLIENT = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", cache_keys=True) if SUPABASE_URL else None
-app = FastAPI(title="SpazaChef API", docs_url=None if os.getenv("ENV") == "production" else "/docs")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+JWKS_CLIENT = (
+    PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", cache_keys=True)
+    if SUPABASE_URL else None
+)
+
+app = FastAPI(
+    title="SpazaChef API",
+    docs_url=None if os.getenv("ENV") == "production" else "/docs",
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[x.strip() for x in os.getenv("ORIGINS", "http://localhost:5173").split(",") if x.strip()],
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv("ORIGINS", "http://localhost:5173").split(",")
+        if origin.strip()
+    ],
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
 def who(req: Request, auth):
-    """Verify Supabase JWTs using project JWKS (asymmetric) or legacy HS256 secret."""
-    if not SUPABASE_URL and not os.getenv("SUPABASE_JWT_SECRET"):
+    """Validate asymmetric JWTs locally and legacy HS256 tokens with Supabase Auth."""
+    if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
         raise HTTPException(503, "Authentication is not configured. Please try again later.")
     if not auth or not auth.startswith("Bearer "):
         raise HTTPException(401, "Sign in to continue.")
+
     token = auth[7:]
     try:
         header = jwt.get_unverified_header(token)
-        if header.get("alg") in ("ES256", "RS256") and JWKS_CLIENT:
-            key = JWKS_CLIENT.get_signing_key_from_jwt(token).key
-            claims = jwt.decode(token, key, algorithms=["ES256", "RS256"], audience="authenticated",
-                                issuer=f"{SUPABASE_URL}/auth/v1")
-        elif header.get("alg") == "HS256" and os.getenv("SUPABASE_JWT_SECRET"):
-            claims = jwt.decode(token, os.environ["SUPABASE_JWT_SECRET"], algorithms=["HS256"],
-                                audience="authenticated",
-                                issuer=f"{SUPABASE_URL}/auth/v1" if SUPABASE_URL else None)
+        algorithm = header.get("alg")
+        if algorithm in ("ES256", "RS256") and JWKS_CLIENT:
+            signing_key = JWKS_CLIENT.get_signing_key_from_jwt(token).key
+            claims = jwt.decode(
+                token,
+                signing_key,
+                algorithms=["ES256", "RS256"],
+                audience="authenticated",
+                issuer=f"{SUPABASE_URL}/auth/v1",
+            )
+            uid = claims.get("sub")
+        elif algorithm == "HS256":
+            response = httpx.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={
+                    "apikey": SUPABASE_PUBLISHABLE_KEY,
+                    "Authorization": f"Bearer {token}",
+                },
+                timeout=5.0,
+            )
+            if response.status_code != 200:
+                raise HTTPException(401, "Your session is invalid or expired. Sign in again.")
+            user = response.json()
+            uid = user.get("id")
+            unverified_claims = jwt.decode(
+                token,
+                options={"verify_signature": False, "verify_aud": False, "verify_iss": False},
+                algorithms=["HS256"],
+            )
+            if not uid or uid != unverified_claims.get("sub"):
+                raise HTTPException(401, "Your session is invalid. Sign in again.")
         else:
             raise HTTPException(401, "Your session uses an unsupported signing key. Sign in again.")
-        uid = claims.get("sub")
+
         if not isinstance(uid, str) or not uid:
             raise HTTPException(401, "Your session is invalid. Sign in again.")
-        tier = store.tier(uid) or claims.get("app_metadata", {}).get("tier", "free")
-        return uid, tier if tier in QUOTA else "free"
     except HTTPException:
         raise
+    except (httpx.TimeoutException, httpx.RequestError) as exc:
+        raise HTTPException(503, "Authentication service is temporarily unavailable.") from exc
     except Exception as exc:
-        # Do not disclose token, key, or verifier internals to the client.
         raise HTTPException(401, "Your session is invalid or expired. Sign in again.") from exc
+
+    try:
+        tier = store.tier(uid) or "free"
+    except Exception as exc:
+        raise HTTPException(503, "Database is temporarily unavailable.") from exc
+    return uid, tier if tier in QUOTA else "free"
+
 
 class Brief(BaseModel):
     persona: str = "zanele"
@@ -54,14 +100,17 @@ class Brief(BaseModel):
     serves: int = Field(4, ge=1, le=20)
     notes: str = Field("", max_length=200)
 
+
 class Feedback(BaseModel):
     rating: int | None = Field(None, ge=1, le=5)
     cooked: bool = False
     regenerated: bool = False
 
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
 
 @app.post("/api/recipes/generate")
 def generate(b: Brief, req: Request, authorization: str | None = Header(None)):
@@ -70,24 +119,52 @@ def generate(b: Brief, req: Request, authorization: str | None = Header(None)):
         recipe = engine.generate(b.model_dump(), b.persona, store.weights())
     except ValueError as exc:
         raise HTTPException(422, str(exc))
-    if not store.use(uid, dt.date.today().isoformat(), QUOTA.get(tier, 5)):
-        raise HTTPException(402, "You've used today's recipe allowance. Upgrade for more.")
-    store.add_recipe(uid, recipe)
+    except Exception as exc:
+        raise HTTPException(503, "Recipe service is temporarily unavailable.") from exc
+    try:
+        if not store.use(uid, dt.date.today().isoformat(), QUOTA.get(tier, 5)):
+            raise HTTPException(402, "You've used today's recipe allowance. Upgrade for more.")
+        store.add_recipe(uid, recipe)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "Database is temporarily unavailable.") from exc
     return recipe
+
 
 @app.get("/api/recipes")
 def mine(req: Request, authorization: str | None = Header(None)):
-    return store.recipes(who(req, authorization)[0])
+    uid, _ = who(req, authorization)
+    try:
+        return store.recipes(uid)
+    except Exception as exc:
+        raise HTTPException(503, "Database is temporarily unavailable.") from exc
+
 
 @app.post("/api/recipes/{rid}/feedback")
 def feedback(rid: str, f: Feedback, req: Request, authorization: str | None = Header(None)):
     uid, _ = who(req, authorization)
-    recipe = store.get(uid, rid)
-    if not recipe:
-        raise HTTPException(404, "Recipe not found.")
-    store.mark(uid, rid, f.rating, f.cooked)
-    store.save_weights(engine.learn(store.weights(), recipe["persona"], recipe["archetype"], f.rating, f.cooked, f.regenerated))
-    return {"ok": True}
+    try:
+        recipe = store.get(uid, rid)
+        if not recipe:
+            raise HTTPException(404, "Recipe not found.")
+        store.mark(uid, rid, f.rating, f.cooked)
+        store.save_weights(
+            engine.learn(
+                store.weights(),
+                recipe["persona"],
+                recipe["archetype"],
+                f.rating,
+                f.cooked,
+                f.regenerated,
+            )
+        )
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "Database is temporarily unavailable.") from exc
+
 
 @app.post("/api/payfast/itn")
 async def itn(req: Request):
