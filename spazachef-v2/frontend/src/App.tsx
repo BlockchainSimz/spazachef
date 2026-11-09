@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 const API=import.meta.env.VITE_API_URL??"";
@@ -18,7 +19,7 @@ async function api<T>(path:string,body?:unknown):Promise<T>{
 }
 function AuthGate(){
  const [mode,setMode]=useState<"signin"|"signup"|"reset">("signin"),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
- async function submit(e:React.FormEvent){e.preventDefault();if(!supabase)return;setBusy(true);setError("");setNotice("");
+ async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;setBusy(true);setError("");setNotice("");
  try{
   if(mode==="signup"){const {data,error}=await supabase.auth.signUp({email:email.trim(),password});if(error)throw error;setNotice(data.session?"Account created. You're signed in.":"Account created. Check your email to confirm your address, then sign in.");if(data.session)return;setMode("signin");}
   else if(mode==="signin"){const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(error)throw error;}
