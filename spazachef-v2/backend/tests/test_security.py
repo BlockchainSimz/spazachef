@@ -30,6 +30,7 @@ def test_generation_rejects_invalid_token(monkeypatch):
 def test_valid_legacy_supabase_hs256_token_resolves_user(monkeypatch):
     secret = "test-secret-with-enough-entropy"
     monkeypatch.setenv("SUPABASE_JWT_SECRET", secret)
+    monkeypatch.setattr("app.main.store.tier", lambda uid: None)
     token = jwt.encode({"sub": "user-123", "aud": "authenticated"}, secret, algorithm="HS256")
     uid, tier = who(None, "Bearer " + token)
     assert uid == "user-123"
