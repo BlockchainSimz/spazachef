@@ -1,31 +1,36 @@
-import json, os, sqlite3, threading
-_L = threading.Lock(); PATH = os.getenv("DATABASE_PATH", "spazachef.db")
-def db():
-    c = sqlite3.connect(PATH, check_same_thread=False); c.row_factory = sqlite3.Row
-    c.executescript("""create table if not exists recipes(id text primary key, uid text, body text, rating int, cooked int default 0, at text default current_timestamp);
-    create table if not exists weights(k text primary key, a real, b real);
-    create table if not exists usage(uid text, day text, n int, primary key(uid, day));
-    create table if not exists tiers(uid text primary key, tier text);""")
-    return c
-def weights():
-    with _L, db() as c: return {r["k"]: (r["a"], r["b"]) for r in c.execute("select * from weights")}
+"""Supabase (PostgREST) storage. Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (server only)."""
+import os
+from urllib.parse import quote
+import httpx
+_c = None
+MERGE = {"Prefer": "resolution=merge-duplicates,return=minimal"}
+def _client():
+    global _c
+    if _c is None:
+        k = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+        _c = httpx.Client(base_url=os.environ["SUPABASE_URL"].rstrip("/") + "/rest/v1", timeout=10,
+                          headers={"apikey": k, "Authorization": "Bearer " + k, "Content-Type": "application/json"})
+    return _c
+def _r(method, path, **kw):
+    r = _client().request(method, path, **kw); r.raise_for_status(); return r.json() if r.content else None
+def weights(): return {x["k"]: (x["a"], x["b"]) for x in _r("GET", "/sc2_weights?select=*")}
 def save_weights(w):
-    with _L, db() as c: c.executemany("insert into weights values(?,?,?) on conflict(k) do update set a=excluded.a,b=excluded.b", [(k, *v) for k, v in w.items()])
-def add_recipe(uid, r):
-    with _L, db() as c: c.execute("insert into recipes(id,uid,body) values(?,?,?)", (r["id"], uid, json.dumps(r)))
+    if w: _r("POST", "/sc2_weights?on_conflict=k", json=[{"k": k, "a": a, "b": b} for k, (a, b) in w.items()], headers=MERGE)
+def add_recipe(uid, r): _r("POST", "/sc2_recipes", json={"id": r["id"], "uid": uid, "body": r}, headers={"Prefer": "return=minimal"})
 def recipes(uid, n=30):
-    with _L, db() as c: return [json.loads(r["body"]) | {"rating": r["rating"], "cooked": bool(r["cooked"])} for r in c.execute("select * from recipes where uid=? order by at desc limit ?", (uid, n))]
+    rows = _r("GET", f"/sc2_recipes?uid=eq.{quote(uid)}&order=created_at.desc&limit={n}&select=body,rating,cooked")
+    return [x["body"] | {"rating": x["rating"], "cooked": x["cooked"]} for x in rows]
 def get(uid, rid):
-    with _L, db() as c:
-        r = c.execute("select * from recipes where id=? and uid=?", (rid, uid)).fetchone(); return r and json.loads(r["body"])
+    rows = _r("GET", f"/sc2_recipes?id=eq.{quote(rid)}&uid=eq.{quote(uid)}&select=body"); return rows[0]["body"] if rows else None
 def mark(uid, rid, rating, cooked):
-    with _L, db() as c: c.execute("update recipes set rating=coalesce(?,rating), cooked=max(cooked,?) where id=? and uid=?", (rating, int(cooked), rid, uid))
+    p = {**({"rating": rating} if rating is not None else {}), **({"cooked": True} if cooked else {})}
+    if p: _r("PATCH", f"/sc2_recipes?id=eq.{quote(rid)}&uid=eq.{quote(uid)}", json=p, headers={"Prefer": "return=minimal"})
+def used(uid, day):
+    rows = _r("GET", f"/sc2_usage?uid=eq.{quote(uid)}&day=eq.{day}&select=n"); return rows[0]["n"] if rows else 0
 def use(uid, day, limit):
-    with _L, db() as c:
-        n = (c.execute("select n from usage where uid=? and day=?", (uid, day)).fetchone() or [0])[0]
-        if n >= limit: return False
-        c.execute("insert into usage values(?,?,1) on conflict(uid,day) do update set n=n+1", (uid, day)); return True
+    n = used(uid, day)
+    if n >= limit: return False
+    _r("POST", "/sc2_usage?on_conflict=uid,day", json={"uid": uid, "day": day, "n": n + 1}, headers=MERGE); return True
 def tier(uid):
-    with _L, db() as c: r = c.execute("select tier from tiers where uid=?", (uid,)).fetchone(); return r and r["tier"]
-def set_tier(uid, t):
-    with _L, db() as c: c.execute("insert into tiers values(?,?) on conflict(uid) do update set tier=excluded.tier", (uid, t))
+    rows = _r("GET", f"/sc2_tiers?uid=eq.{quote(uid)}&select=tier"); return rows[0]["tier"] if rows else None
+def set_tier(uid, t): _r("POST", "/sc2_tiers?on_conflict=uid", json={"uid": uid, "tier": t}, headers=MERGE)

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import Account from "./Account";
+import { authHeader } from "./auth";
 const API = import.meta.env.VITE_API_URL ?? "";
 const PERSONAS = [
   { id: "zanele", ini: "AZ", name: "Auntie Zanele", tag: "Comfort food, big flavour", bio: "Generous, warm, and deeply practical. She knows how to stretch a pantry." },
@@ -7,9 +9,8 @@ const PERSONAS = [
   { id: "raj", ini: "RN", name: "Raj from next door", tag: "Clever swaps, no fuss", bio: "Playful and resourceful, turning everyday ingredients into something worth sharing." },
 ];
 type Recipe = { id: string; title: string; persona_name: string; intro: string; serves: number; minutes: number; ingredients: { item: string; amount: string }[]; steps: string[]; notes: string[]; rating?: number | null; cooked?: boolean };
-const uid = (): Record<string, string> => { const t = localStorage.getItem("token"); return t ? { Authorization: `Bearer ${t}` } : {}; };
 async function api<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(API + path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...uid() }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(API + path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : "Something went wrong. Try again.");
   return j;
 }
@@ -34,6 +35,7 @@ export default function App() {
       <span className="pill mono">Supper, sorted</span>
       <h1 className="serif">What's in the <em>spaza?</em></h1>
       <p className="lede">Tell us what's on hand. We'll turn it into something worth sitting down for.</p>
+      <Account onChange={() => location.reload()} />
       <section className="card"><p className="mono eyebrow">01 / Choose a voice</p><h2 className="serif">Who's cooking with you?</h2>
         <div role="radiogroup" aria-label="Chef voice">{PERSONAS.map(p => <button key={p.id} role="radio" aria-checked={persona === p.id} className={"persona" + (persona === p.id ? " on" : "")} onClick={() => setPersona(p.id)}>
           <span className="ini serif">{p.ini}</span>{persona === p.id && <span className="sel mono">Selected</span>}<b className="serif">{p.name}</b><span className="tag">{p.tag}</span><span className="bio mono">{p.bio}</span></button>)}</div></section>
