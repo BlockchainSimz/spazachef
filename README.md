@@ -1,4 +1,4 @@
-# SpazaChef v2
+# SpazaChef v3
 React/Vite PWA + FastAPI. The recipe engine (`backend/app/engine.py`) is self-contained: no LLM or external recipe source.
 Meta-learning: ratings, "I cooked this" and regenerations update Beta weights per persona and dish style (Thompson sampling); weights persist in the DB.
 Run: `cd backend && pip install -r requirements.txt && uvicorn app.main:app` and `cd frontend && npm i && npm run dev`. Test: `cd backend && pytest`.
