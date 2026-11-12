@@ -9,7 +9,7 @@ ROLES = [
  ("aromatic", "garlic ginger chilli chili onion onions".split()),
  ("veg", "tomato tomatoes tinned carrot cabbage spinach morogo pepper peppers butternut pumpkin squash beetroot cauliflower broccoli peas mushrooms".split()),
 ]
-MEAT=set("chicken beef mince lamb pork fish pilchards pilchard tuna boerewors sausage".split())
+MEAT=set("chicken beef mince lamb pork fish pilchards pilchard tuna boerewors sausage prawns shrimp sardines salmon hake cod anchovy".split())
 PERSONAS={
 "zanele":dict(name="Auntie Zanele",tag="Comfort food, big flavour",heat=1,spice="a pinch of curry powder",likes={"pot":.4,"rice":.2},intro="Sit down, my dear. We are going to stretch this pantry properly."),
 "jabu":dict(name="Braai Boss Jabu",tag="Fire, smoke, and confidence",heat=2,spice="braai spice",likes={"grill":.5,"pan":.3},intro="Right, fire first. Everything tastes better with a little char."),
@@ -41,9 +41,14 @@ def generate(brief,persona_id,weights,rng=random):
  diet=(brief.get("diet") or "").lower(); serves=max(1,min(int(brief.get("serves") or 4),20)); by={}
  for i in items:by.setdefault(role(i),[]).append(i)
  removed=[]
- if "veg" in diet:
+ if diet in {"veg", "vegetarian", "vegan"}:
   removed=[i for i in by.get("protein",[]) if any(m in i for m in MEAT)]
   by["protein"]=[i for i in by.get("protein",[]) if i not in removed]
+ if diet == "vegan":
+  removed += [i for i in by.get("dairy",[]) if i]
+  removed += [i for i in by.get("protein",[]) if i.split()[-1:] and i.split()[-1] in {"egg", "eggs"}]
+  by["dairy"]=[]
+  by["protein"]=[i for i in by.get("protein",[]) if i.split()[-1:] and i.split()[-1] not in {"egg", "eggs"}]
  roles={r for r,v in by.items() if v}; cands=[a for a in ARCH if feasible(a,roles,notes)]
  if not cands:raise ValueError("Add at least one ingredient we can cook with, like a vegetable, grain or protein.")
  def draw(k):
