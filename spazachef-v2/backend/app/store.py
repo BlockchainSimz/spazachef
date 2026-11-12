@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import psycopg
 from psycopg.rows import dict_row
@@ -20,21 +21,52 @@ def db():
     )
 
 
-def weights():
+def weights(uid):
+    prefix = f"{uid}|"
     with db() as conn:
-        rows = conn.execute("select k, a, b from public.weights").fetchall()
-        return {row["k"]: (row["a"], row["b"]) for row in rows}
+        rows = conn.execute(
+            "select k, a, b from public.weights where k like %s",
+            (prefix + "%",),
+        ).fetchall()
+        return {row["k"][len(prefix):]: (row["a"], row["b"]) for row in rows}
 
 
-def save_weights(values):
+def save_weights(uid, values):
     if not values:
         return
     with db() as conn:
         conn.executemany(
             """insert into public.weights (k, a, b) values (%s, %s, %s)
                on conflict (k) do update set a = excluded.a, b = excluded.b""",
-            [(key, *value) for key, value in values.items()],
+            [(f"{uid}|{key}", *value) for key, value in values.items()],
         )
+
+
+def ping():
+    with db() as conn:
+        conn.execute("select 1").fetchone()
+    return True
+
+
+def allow_request(uid, route, limit, window_seconds=60):
+    """Shared PostgreSQL-backed fixed-window limiter, safe across API instances."""
+    bucket = int(time.time() // window_seconds)
+    with db() as conn:
+        row = conn.execute(
+            """insert into public.api_rate_limits (uid, route, window_start, n)
+               values (%s, %s, %s, 1)
+               on conflict (uid, route, window_start) do update
+                 set n = public.api_rate_limits.n + 1
+               returning n""",
+            (uid, route, bucket),
+        ).fetchone()
+        # Each user opportunistically prunes old buckets once per day.
+        if bucket % 1440 == sum(uid.encode("utf-8")) % 1440:
+            conn.execute(
+                "delete from public.api_rate_limits where window_start < %s",
+                (bucket - 1440,),
+            )
+        return row is not None and row["n"] <= limit
 
 
 def add_recipe(uid, recipe):

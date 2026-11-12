@@ -1,3 +1,4 @@
+import logging
 import os
 import datetime as dt
 
@@ -9,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from . import engine, store
 
+logger = logging.getLogger(__name__)
+
 QUOTA = {"free": 5, "basic": 30, "premium": 10_000}
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
@@ -19,7 +22,7 @@ JWKS_CLIENT = (
 
 app = FastAPI(
     title="SpazaChef API",
-    docs_url=None if os.getenv("ENV") == "production" else "/docs",
+    docs_url=None if os.getenv("ENV", "production").lower() == "production" else "/docs",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -109,14 +112,32 @@ class Feedback(BaseModel):
 
 @app.get("/api/health")
 def health():
+    """Liveness probe: confirms that the ASGI process is responding."""
     return {"ok": True}
+
+
+@app.get("/api/ready")
+def readiness():
+    """Readiness probe: confirms required production configuration and DB access."""
+    if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
+        raise HTTPException(503, "Authentication service is not configured.")
+    try:
+        store.ping()
+    except Exception as exc:
+        logger.exception("Database readiness probe failed (%s)", type(exc).__name__)
+        raise HTTPException(503, "Database is not ready.") from exc
+    return {"ok": True, "database": "ready", "authentication": "configured"}
 
 
 @app.post("/api/recipes/generate")
 def generate(b: Brief, req: Request, authorization: str | None = Header(None)):
     uid, tier = who(req, authorization)
     try:
-        recipe = engine.generate(b.model_dump(), b.persona, store.weights())
+        if not store.allow_request(uid, "recipe-generate", 10):
+            raise HTTPException(429, "Too many recipe requests. Please wait a minute.", headers={"Retry-After": "60"})
+        recipe = engine.generate(b.model_dump(), b.persona, store.weights(uid))
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     except Exception as exc:
@@ -136,7 +157,11 @@ def generate(b: Brief, req: Request, authorization: str | None = Header(None)):
 def mine(req: Request, authorization: str | None = Header(None)):
     uid, _ = who(req, authorization)
     try:
+        if not store.allow_request(uid, "recipe-list", 120):
+            raise HTTPException(429, "Too many requests. Please try again shortly.", headers={"Retry-After": "60"})
         return store.recipes(uid)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(503, "Database is temporarily unavailable.") from exc
 
@@ -145,13 +170,16 @@ def mine(req: Request, authorization: str | None = Header(None)):
 def feedback(rid: str, f: Feedback, req: Request, authorization: str | None = Header(None)):
     uid, _ = who(req, authorization)
     try:
+        if not store.allow_request(uid, "recipe-feedback", 60):
+            raise HTTPException(429, "Too many feedback requests. Please try again shortly.", headers={"Retry-After": "60"})
         recipe = store.get(uid, rid)
         if not recipe:
             raise HTTPException(404, "Recipe not found.")
         store.mark(uid, rid, f.rating, f.cooked)
         store.save_weights(
+            uid,
             engine.learn(
-                store.weights(),
+                store.weights(uid),
                 recipe["persona"],
                 recipe["archetype"],
                 f.rating,
