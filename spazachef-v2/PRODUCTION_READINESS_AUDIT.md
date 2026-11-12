@@ -21,6 +21,15 @@
 6. **Quota sequencing:** recipe generation is validated before daily quota consumption.
 7. **CI:** adds frontend build and backend test jobs for changes under `spazachef-v2/`.
 
+## Follow-up hardening added on 2026-11-12 (staging branch)
+1. Added PostgreSQL-backed per-user/per-route fixed-window rate limiting for recipe generation, recipe listing, and feedback. The new migration must be applied before deploying this API revision.
+2. Isolated recipe-learning weights by authenticated user while retaining the existing weights table shape.
+3. Added database/auth readiness at /api/ready, kept /api/health as liveness, and disabled production API docs by default.
+4. Added regression tests for rate limiting, database readiness failure, fish exclusion from vegetarian recipes, and dairy/egg exclusion from vegan recipes.
+5. Corrected Vercel service configuration with the FastAPI entrypoint and SPA deep-link fallback.
+
+These changes are committed to codex/production-hardening-20261112. They are not yet proven by a completed CI run or live production smoke test.
+
 ## Remaining critical/high-priority blockers
 1. **Deployment environment is not configured.** Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` for the frontend and `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `ORIGINS`, and storage settings for the backend. Never expose a Supabase secret/service-role key to the browser.
 2. **Frontend build and CI are pending.** The lockfile must be regenerated after the new SDK dependency is added; CI currently uses npm install rather than npm ci.
