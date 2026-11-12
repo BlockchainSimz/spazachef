@@ -11,3 +11,16 @@ def test_learning_shifts_choice():
     for _ in range(40): engine.learn(w, "jabu", "pan", rating=5, cooked=True); engine.learn(w, "jabu", "grill", rating=1)
     picks = [engine.generate(B, "jabu", w, random.Random(i))["archetype"] for i in range(40)]
     assert picks.count("pan") > 25
+
+
+def test_vegetarian_drops_fish_and_meat():
+    brief = {**B, "ingredients": "rice, spinach, pilchards, onion", "diet": "vegetarian"}
+    r = engine.generate(brief, "zanele", {})
+    assert not any(x["item"] == "pilchards" for x in r["ingredients"])
+
+
+def test_vegan_drops_meat_eggs_and_dairy():
+    brief = {**B, "ingredients": "rice, spinach, chicken, eggs, cheese, onion", "diet": "vegan"}
+    r = engine.generate(brief, "zanele", {})
+    names = {x["item"] for x in r["ingredients"]}
+    assert not names.intersection({"chicken", "eggs", "cheese"})
