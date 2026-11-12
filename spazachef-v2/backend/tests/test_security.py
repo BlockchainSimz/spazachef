@@ -104,3 +104,28 @@ def test_payfast_itn_cannot_grant_tier_while_verification_incomplete():
         data={"payment_status": "COMPLETE", "amount_gross": "99.00", "custom_str1": "victim"},
     )
     assert response.status_code == 503
+
+
+
+def test_recipe_generation_rate_limit_returns_429(monkeypatch):
+    monkeypatch.setattr("app.main.who", lambda req, auth: ("user-123", "free"))
+    monkeypatch.setattr("app.main.store.allow_request", lambda *args, **kwargs: False)
+    response = client.post(
+        "/api/recipes/generate",
+        headers={"Authorization": "Bearer test"},
+        json={"ingredients": "rice, tomato"},
+    )
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "60"
+
+
+def test_readiness_fails_when_database_is_unavailable(monkeypatch):
+    monkeypatch.setattr("app.main.SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr("app.main.SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test")
+
+    def unavailable():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.main.store.ping", unavailable)
+    response = client.get("/api/ready")
+    assert response.status_code == 503
