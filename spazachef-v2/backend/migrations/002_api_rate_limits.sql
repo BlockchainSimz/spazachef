@@ -9,4 +9,5 @@ create table if not exists public.api_rate_limits (
 );
 create index if not exists api_rate_limits_window_idx
     on public.api_rate_limits (window_start);
+alter table public.api_rate_limits enable row level security;
 revoke all on table public.api_rate_limits from anon, authenticated;
