@@ -10,7 +10,7 @@
 - Both Vercel checks reported success for the preview commit; this verifies builds, not live API/database behaviour.
 - The active Supabase project is `itkovoagalodjqfjvmlp` (SpazaChef, eu-west-1); its four application tables have RLS enabled.
 - Applied the `api_rate_limits` migration successfully and verified the new table exists with RLS enabled.
-- Configured Vercel frontend Supabase URL/publishable key/API URL and backend Supabase URL/publishable key/CORS/ENV variables.
+- Configured Vercel frontend Supabase URL/publishable key and environment-specific API URLs (production API for production, branch API for this preview, localhost for development); backend Supabase URL/publishable key/CORS/ENV variables are set.
 - Backend `DATABASE_URL` is still absent, so database readiness and protected API flows cannot pass until the connection string is added as a Vercel secret.
 - GitHub Actions run #33 completed successfully: frontend TypeScript/Vite build passed and backend suite passed 14 tests. One Starlette/AnyIO deprecation warning remains.
 - The latest frontend and backend Vercel preview deployments are both READY for commit 8dceff9. They are preview deployments, not production releases.
