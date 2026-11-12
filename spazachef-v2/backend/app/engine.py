@@ -46,9 +46,10 @@ def generate(brief,persona_id,weights,rng=random):
   by["protein"]=[i for i in by.get("protein",[]) if i not in removed]
  if diet == "vegan":
   removed += [i for i in by.get("dairy",[]) if i]
-  removed += [i for i in by.get("protein",[]) if i.split()[-1:] and i.split()[-1] in {"egg", "eggs"}]
+  is_egg = lambda item: bool(set(re.findall(r"[a-z]+", item)) & {"egg", "eggs"})
+  removed += [i for i in by.get("protein",[]) if is_egg(i)]
   by["dairy"]=[]
-  by["protein"]=[i for i in by.get("protein",[]) if i.split()[-1:] and i.split()[-1] not in {"egg", "eggs"}]
+  by["protein"]=[i for i in by.get("protein",[]) if not is_egg(i)]
  roles={r for r,v in by.items() if v}; cands=[a for a in ARCH if feasible(a,roles,notes)]
  if not cands:raise ValueError("Add at least one ingredient we can cook with, like a vegetable, grain or protein.")
  def draw(k):
