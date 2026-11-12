@@ -75,7 +75,7 @@ The schema is applied to the connected Supabase project. The tables are currentl
 ## Production hardening migration
 
 Before deploying the API revision that uses shared rate limiting, apply
-backend/migrations/002_api_rate_limits.sql to the active Supabase PostgreSQL
+supabase/migrations/20261112062124_api_rate_limits.sql to the active Supabase PostgreSQL
 database using the Supabase SQL Editor or the project's migration workflow.
 The migration creates a private, RLS-enabled rate-limit table. Do not grant
 anon or authenticated access to it.
