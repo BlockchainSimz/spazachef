@@ -70,3 +70,21 @@ The schema is applied to the connected Supabase project. The tables are currentl
 
 ## Release decision
 **Not production ready.** This is an isolated staging branch, not a deployable release. Do not enable payments or merge into the existing application until the remaining blockers and tests are resolved.
+
+
+## Production hardening migration
+
+Before deploying the API revision that uses shared rate limiting, apply
+backend/migrations/002_api_rate_limits.sql to the active Supabase PostgreSQL
+database using the Supabase SQL Editor or the project's migration workflow.
+The migration creates a private, RLS-enabled rate-limit table. Do not grant
+anon or authenticated access to it.
+
+The backend now isolates recipe-learning weights by authenticated user.
+Existing legacy global weights are not used by the new user-scoped lookup.
+
+For production Vercel configuration, set:
+- Frontend: VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY
+- Backend: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, DATABASE_URL, ORIGINS, ENV=production
+
+Never place a Supabase secret/service-role key in a VITE_ variable.
