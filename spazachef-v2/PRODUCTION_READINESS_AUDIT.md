@@ -58,3 +58,9 @@ The uploaded v2 application differs from the repository's existing `main` applic
 - API preview `/api/ready` returns HTTP 503. Runtime logs identify the cause: `DATABASE_URL` is an HTTPS Supabase project URL, not a PostgreSQL URI.
 - The API preview alias has a scoped Vercel protection override for testing; revoke it after preview verification.
 - No production deployment or merge to `main` has been performed. PR #3 still targets the isolated V2 staging branch.
+
+
+## Isolated API preview infrastructure
+- A separate Git-linked Vercel project, `spazachef-api-v2`, is configured with root directory `spazachef-v2/backend` and public API access; the FastAPI layer continues to require Supabase JWTs for user data routes.
+- The original `spazachef-api` project root directory and preview setting were restored to avoid changing the existing API project's deployment path while V2 is validated.
+- The isolated V2 API preview still requires its own sensitive PostgreSQL `DATABASE_URL` before readiness can pass.
