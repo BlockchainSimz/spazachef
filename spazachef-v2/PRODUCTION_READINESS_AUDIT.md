@@ -12,7 +12,9 @@
 - Applied the `api_rate_limits` migration successfully and verified the new table exists with RLS enabled.
 - Configured Vercel frontend Supabase URL/publishable key/API URL and backend Supabase URL/publishable key/CORS/ENV variables.
 - Backend `DATABASE_URL` is still absent, so database readiness and protected API flows cannot pass until the connection string is added as a Vercel secret.
-- GitHub Actions backend tests and browser-based signup/login/recovery flows have not yet been confirmed.
+- GitHub Actions run #33 completed successfully: frontend TypeScript/Vite build passed and backend suite passed 14 tests. One Starlette/AnyIO deprecation warning remains.
+- The latest frontend and backend Vercel preview deployments are both READY for commit 8dceff9. They are preview deployments, not production releases.
+- Browser-based signup/login/recovery and live protected recipe API calls have not yet been exercised.
 - Live PayFast callbacks, production backups, monitoring, and restore drills remain unverified.
 
 ## Implemented in this staging patch
@@ -31,14 +33,14 @@
 4. Added regression tests for rate limiting, database readiness failure, fish exclusion from vegetarian recipes, and dairy/egg exclusion from vegan recipes.
 5. Corrected Vercel service configuration with the FastAPI entrypoint and SPA deep-link fallback.
 
-These changes are committed to codex/production-hardening-20261112. Vercel preview builds are green; CI and live production smoke tests are still pending.
+These changes are committed to codex/production-hardening-20261112. Vercel preview builds and GitHub CI are green; live production smoke tests remain pending.
 
 ## Remaining critical/high-priority blockers
 1. **Backend database connection is not configured.** Add `DATABASE_URL` to the Vercel API project as a sensitive environment variable using the SpazaChef Supabase Transaction Pooler connection string. Never expose a database password or service-role key to the browser.
 2. **CI and full regression tests are pending.** The Vercel frontend and backend preview builds passed; wait for the GitHub Actions test workflow and fix any failures before merge.
-3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project.
-4. **Database connection is not configured or verified from the API runtime.** The backend now requires a privileged `DATABASE_URL` secret (never a `VITE_` variable) and uses psycopg over SSL. Configure it with the Supabase connection string and a suitable Supavisor pooler mode. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed the four application tables have RLS enabled; the rate-limit table is also RLS-enabled with no anon/authenticated grants. Existing sc2_* tables have INFO-level advisor notices because they have RLS enabled without policies.
-5. **Shared rate limiting is implemented.** Verify its live behaviour after DATABASE_URL is configured and monitor the rate-limit table's retention.
+3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project after DATABASE_URL is configured.
+4. **Database connection is not configured or verified from the API runtime.** The backend requires a privileged `DATABASE_URL` secret (never a `VITE_` variable) and uses psycopg over SSL. Configure it with the SpazaChef Supabase Transaction Pooler connection string. The database schema and row ownership policies were inspected; four application tables have user-scoped policies and weights are backend-only. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed the four application tables have RLS enabled; the rate-limit table is also RLS-enabled with no anon/authenticated grants. Existing sc2_* tables have INFO-level advisor notices because they have RLS enabled without policies.
+5. **Shared rate limiting is implemented.** Verify live enforcement after DATABASE_URL is configured and monitor rate-limit table retention.
 6. **PayFast is intentionally disabled.** Implement provider-source verification, server-side pending orders, amount/currency matching, ownership, unique transaction IDs, replay protection/idempotency, and audit records before re-enabling.
 7. **Dietary and food safety controls are incomplete.** Filtering is substring-based and may misclassify ingredients; allergen handling and safe internal-temperature guidance are absent.
 8. **Operational readiness is unverified.** Add health/readiness checks, structured logs, monitoring/alerts, database backup/restore tests, retention/deletion workflows, and deployment rollback procedures.
