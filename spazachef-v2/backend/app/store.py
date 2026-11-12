@@ -60,6 +60,12 @@ def allow_request(uid, route, limit, window_seconds=60):
                returning n""",
             (uid, route, bucket),
         ).fetchone()
+        # Each user opportunistically prunes old buckets once per day.
+        if bucket % 1440 == sum(uid.encode("utf-8")) % 1440:
+            conn.execute(
+                "delete from public.api_rate_limits where window_start < %s",
+                (bucket - 1440,),
+            )
         return row is not None and row["n"] <= limit
 
 
