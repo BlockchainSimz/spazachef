@@ -11,7 +11,7 @@
 - The active Supabase project is `itkovoagalodjqfjvmlp` (SpazaChef, eu-west-1); its four application tables have RLS enabled.
 - Applied the `api_rate_limits` migration successfully and verified the new table exists with RLS enabled.
 - Configured Vercel frontend Supabase URL/publishable key and environment-specific API URLs (production API for production, branch API for this preview, localhost for development); backend Supabase URL/publishable key/CORS/ENV variables are set.
-- Backend `DATABASE_URL` is still absent, so database readiness and protected API flows cannot pass until the connection string is added as a Vercel secret.
+- Vercel has a sensitive `DATABASE_URL` variable for Preview and Production, but the live readiness probe fails because its value is an HTTPS Supabase project URL rather than a PostgreSQL connection URI. Replace it with the exact Supabase Transaction Pooler URI from the project Connect dialog.
 - GitHub Actions run #33 completed successfully: frontend TypeScript/Vite build passed and backend suite passed 14 tests. One Starlette/AnyIO deprecation warning remains.
 - The latest frontend and backend Vercel preview deployments are both READY for commit 8dceff9. They are preview deployments, not production releases.
 - Browser-based signup/login/recovery and live protected recipe API calls have not yet been exercised.
@@ -36,10 +36,10 @@
 These changes are committed to codex/production-hardening-20261112. Vercel preview builds and GitHub CI are green; live production smoke tests remain pending.
 
 ## Remaining critical/high-priority blockers
-1. **Backend database connection is not configured.** Add `DATABASE_URL` to the Vercel API project as a sensitive environment variable using the SpazaChef Supabase Transaction Pooler connection string. Never expose a database password or service-role key to the browser.
+1. **Backend database connection is misconfigured.** The Vercel `DATABASE_URL` secret currently contains the Supabase HTTPS API URL; Psycopg reports `missing '=' after 'https://itkovoagalodjqfjvmlp.supabase.co' in connection info string`. Replace it with the exact Transaction Pooler URI from Supabase Dashboard → Connect → Transaction pooler, with the database password URL-encoded. Keep it sensitive and never expose it to the browser.
 2. **CI and full regression tests are pending.** The Vercel frontend and backend preview builds passed; wait for the GitHub Actions test workflow and fix any failures before merge.
 3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project after DATABASE_URL is configured.
-4. **Database connection is not configured or verified from the API runtime.** The backend requires a privileged `DATABASE_URL` secret (never a `VITE_` variable) and uses psycopg over SSL. Configure it with the SpazaChef Supabase Transaction Pooler connection string. The database schema and row ownership policies were inspected; four application tables have user-scoped policies and weights are backend-only. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed the four application tables have RLS enabled; the rate-limit table is also RLS-enabled with no anon/authenticated grants. Existing sc2_* tables have INFO-level advisor notices because they have RLS enabled without policies.
+4. **Database connection is not verified from the API runtime.** The backend uses Psycopg over SSL and expects a PostgreSQL URI, not the Supabase HTTPS project URL. Use the exact shared Transaction Pooler connection string copied from the Supabase Connect dialog (host and pooler index must not be guessed). The database schema and row ownership policies were inspected; four application tables have user-scoped policies and weights are backend-only. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed the four application tables have RLS enabled; the rate-limit table is also RLS-enabled with no anon/authenticated grants. Existing sc2_* tables have INFO-level advisor notices because they have RLS enabled without policies.
 5. **Shared rate limiting is implemented.** Verify live enforcement after DATABASE_URL is configured and monitor rate-limit table retention.
 6. **PayFast is intentionally disabled.** Implement provider-source verification, server-side pending orders, amount/currency matching, ownership, unique transaction IDs, replay protection/idempotency, and audit records before re-enabling.
 7. **Dietary and food safety controls are incomplete.** Filtering is substring-based and may misclassify ingredients; allergen handling and safe internal-temperature guidance are absent.
@@ -49,3 +49,12 @@ These changes are committed to codex/production-hardening-20261112. Vercel previ
 The uploaded v2 application differs from the repository's existing `main` application. This source import is intentionally isolated under `spazachef-v2/` on a draft branch; it must not replace the existing app. No production deployment has been performed.
 
 **Release recommendation:** Do not deploy this branch as production, do not enable paid subscriptions, and do not merge until the remaining blockers are resolved and verified.
+
+
+## Live API smoke test — 2026-11-12
+- Frontend preview HTML and JS bundle return HTTP 200; the built bundle contains the expected branch API base URL.
+- API preview `/api/health` returns HTTP 200.
+- API preview `/api/recipes/generate` returns HTTP 405 to GET, confirming the route is registered and correctly requires POST.
+- API preview `/api/ready` returns HTTP 503. Runtime logs identify the cause: `DATABASE_URL` is an HTTPS Supabase project URL, not a PostgreSQL URI.
+- The API preview alias has a scoped Vercel protection override for testing; revoke it after preview verification.
+- No production deployment or merge to `main` has been performed. PR #3 still targets the isolated V2 staging branch.
