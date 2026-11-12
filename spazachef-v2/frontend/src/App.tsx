@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-const API=import.meta.env.VITE_API_URL??"";
+const API=""; // API requests use the same-origin Vercel proxy in /api/[...path].js
 const PERSONAS=[
 {id:"zanele",ini:"AZ",name:"Auntie Zanele",tag:"Comfort food, big flavour",bio:"Generous, warm, and practical."},
 {id:"jabu",ini:"BJ",name:"Braai Boss Jabu",tag:"Fire, smoke, and confidence",bio:"Bold, direct, and clever."},
