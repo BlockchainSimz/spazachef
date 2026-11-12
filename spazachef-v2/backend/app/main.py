@@ -19,7 +19,7 @@ JWKS_CLIENT = (
 
 app = FastAPI(
     title="SpazaChef API",
-    docs_url=None if os.getenv("ENV") == "production" else "/docs",
+    docs_url=None if os.getenv("ENV", "production").lower() == "production" else "/docs",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -132,6 +132,8 @@ def generate(b: Brief, req: Request, authorization: str | None = Header(None)):
         if not store.allow_request(uid, "recipe-generate", 10):
             raise HTTPException(429, "Too many recipe requests. Please wait a minute.", headers={"Retry-After": "60"})
         recipe = engine.generate(b.model_dump(), b.persona, store.weights(uid))
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     except Exception as exc:
@@ -154,6 +156,8 @@ def mine(req: Request, authorization: str | None = Header(None)):
         if not store.allow_request(uid, "recipe-list", 120):
             raise HTTPException(429, "Too many requests. Please try again shortly.", headers={"Retry-After": "60"})
         return store.recipes(uid)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(503, "Database is temporarily unavailable.") from exc
 
