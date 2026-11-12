@@ -1,3 +1,4 @@
+import logging
 import os
 import datetime as dt
 
@@ -8,6 +9,8 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from . import engine, store
+
+logger = logging.getLogger(__name__)
 
 QUOTA = {"free": 5, "basic": 30, "premium": 10_000}
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -121,6 +124,7 @@ def readiness():
     try:
         store.ping()
     except Exception as exc:
+        logger.exception("Database readiness probe failed (%s)", type(exc).__name__)
         raise HTTPException(503, "Database is not ready.") from exc
     return {"ok": True, "database": "ready", "authentication": "configured"}
 
