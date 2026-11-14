@@ -1,7 +1,7 @@
 """Self-contained recipe engine: local knowledge base plus feedback learning."""
 import random, re, uuid
 ROLES = [
- ("protein", "chicken beef mince lamb pork fish pilchards pilchard tuna egg eggs boerewors sausage tofu".split()),
+ ("protein", "chicken beef mince lamb pork fish pilchards pilchard tuna egg eggs boerewors sausage tofu prawns prawn shrimp shrimps salmon hake cod anchovy anchovies sardine sardines mussels calamari squid crab lobster seafood".split()),
  ("legume", "beans lentils chickpeas samp".split()),
  ("starch", "rice pap maize potato potatoes pasta noodles bread couscous".split()),
  ("spice", "curry masala turmeric cumin coriander paprika cinnamon".split()),
@@ -9,7 +9,11 @@ ROLES = [
  ("aromatic", "garlic ginger chilli chili onion onions".split()),
  ("veg", "tomato tomatoes tinned carrot cabbage spinach morogo pepper peppers butternut pumpkin squash beetroot cauliflower broccoli peas mushrooms".split()),
 ]
-MEAT=set("chicken beef mince lamb pork fish pilchards pilchard tuna boerewors sausage prawns shrimp sardines salmon hake cod anchovy".split())
+LAND_MEAT=set("chicken beef mince lamb pork boerewors sausage bacon ham venison ostrich duck turkey goose rabbit biltong droewors gelatin".split())
+SEAFOOD=set("fish pilchards pilchard tuna prawns prawn shrimp shrimps salmon hake cod anchovy anchovies sardine sardines mussels calamari squid crab lobster seafood".split())
+EGGS=set("egg eggs".split())
+DAIRY=set("milk cheese butter yoghurt yogurt cream amasi whey casein".split())
+VEGAN_EXTRAS=set("honey".split())
 PERSONAS={
 "zanele":dict(name="Auntie Zanele",tag="Comfort food, big flavour",heat=1,spice="a pinch of curry powder",likes={"pot":.4,"rice":.2},intro="Sit down, my dear. We are going to stretch this pantry properly."),
 "jabu":dict(name="Braai Boss Jabu",tag="Fire, smoke, and confidence",heat=2,spice="braai spice",likes={"grill":.5,"pan":.3},intro="Right, fire first. Everything tastes better with a little char."),
@@ -24,10 +28,24 @@ ARCH={
 "bake":dict(title="Tray-baked {main}",oven=True,mins=50,fire=False,steps=["Heat the oven to 200 C.","Toss {p}, {v}, {a} and {sp} with oil on a tray.","Roast 35 to 40 minutes, turning once.","Serve with {s}."])}
 def parse(text): return [t.strip().lower() for t in re.split(r"[,\n;]+",text or "") if t.strip()][:40]
 def role(item):
- words=set(re.findall(r"[a-z\-]+",item))
- for r,ws in ROLES:
-  if words & set(ws): return r
+ words=set(re.findall(r"[a-z\\-]+",item))
+ # Do not mistake plant-based milks/creams for dairy.
+ plant_based=bool(words & {"oat","almond","soy","soya","rice","coconut"})
+ if words & set(ROLES[0][1]): return "protein"
+ if words & set(ROLES[1][1]): return "legume"
+ if words & set(ROLES[2][1]): return "starch"
+ if words & set(ROLES[3][1]): return "spice"
+ if words & DAIRY and not plant_based: return "dairy"
+ if words & set(ROLES[5][1]): return "aromatic"
+ if words & set(ROLES[6][1]): return "veg"
  return "other"
+def normalize_diet(value):
+ value=re.sub(r"\\s+"," ",(value or "").strip().lower())
+ if not value or value in {"none","no preference","omnivore","anything"}: return ""
+ if "vegan" in value: return "vegan"
+ if "pescatarian" in value or "pescetarian" in value: return "pescatarian"
+ if "vegetarian" in value or value in {"veg","veggie","no meat"}: return "vegetarian"
+ raise ValueError("Unsupported dietary preference. Use vegetarian, vegan, pescatarian, or leave it blank.")
 def feasible(a,roles,notes):
  if ARCH[a]["oven"] and "no oven" in notes:return False
  if ARCH[a]["fire"] and ("no fire" in notes or "no braai" in notes):return False
@@ -38,18 +56,22 @@ def join(xs,fb):
  return xs[0] if len(xs)==1 else ", ".join(xs[:-1])+" and "+xs[-1]
 def generate(brief,persona_id,weights,rng=random):
  p=PERSONAS.get(persona_id) or PERSONAS["zanele"]; items=parse(brief.get("ingredients")); notes=(brief.get("notes") or "").lower()
- diet=(brief.get("diet") or "").lower(); serves=max(1,min(int(brief.get("serves") or 4),20)); by={}
+ diet=normalize_diet(brief.get("diet")); serves=max(1,min(int(brief.get("serves") or 4),20)); by={}
  for i in items:by.setdefault(role(i),[]).append(i)
  removed=[]
- if diet in {"veg", "vegetarian", "vegan"}:
-  removed=[i for i in by.get("protein",[]) if any(m in i for m in MEAT)]
-  by["protein"]=[i for i in by.get("protein",[]) if i not in removed]
- if diet == "vegan":
-  removed += [i for i in by.get("dairy",[]) if i]
-  is_egg = lambda item: bool(set(re.findall(r"[a-z]+", item)) & {"egg", "eggs"})
-  removed += [i for i in by.get("protein",[]) if is_egg(i)]
-  by["dairy"]=[]
-  by["protein"]=[i for i in by.get("protein",[]) if not is_egg(i)]
+ if diet:
+  excluded=LAND_MEAT | (SEAFOOD if diet in {"vegetarian","vegan"} else set())
+  if diet == "vegan":
+   excluded=excluded | EGGS | DAIRY | VEGAN_EXTRAS
+  for group in list(by):
+   kept=[]
+   for item in by[group]:
+    words=set(re.findall(r"[a-z]+",item))
+    if words & excluded:
+     removed.append(item)
+    else:
+     kept.append(item)
+   by[group]=kept
  roles={r for r,v in by.items() if v}; cands=[a for a in ARCH if feasible(a,roles,notes)]
  if not cands:raise ValueError("Add at least one ingredient we can cook with, like a vegetable, grain or protein.")
  def draw(k):
