@@ -67,7 +67,10 @@ def generate(brief,persona_id,weights,rng=random):
    kept=[]
    for item in by[group]:
     words=set(re.findall(r"[a-z]+",item))
-    if words & excluded:
+    blocked=words & excluded
+    if diet == "vegan" and words & {"oat","almond","soy","soya","rice","coconut"}:
+     blocked=blocked - DAIRY
+    if blocked:
      removed.append(item)
     else:
      kept.append(item)
