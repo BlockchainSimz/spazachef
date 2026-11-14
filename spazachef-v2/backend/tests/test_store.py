@@ -10,10 +10,10 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, fail_on_second=False, usage_row=None):
+    def __init__(self, fail_on_second=False, usage_row=True):
         self.calls = []
         self.fail_on_second = fail_on_second
-        self.usage_row = {"n": 1} if usage_row is None else usage_row
+        self.usage_row = {"n": 1} if usage_row is True else usage_row
         self.exit_exception = None
 
     def __enter__(self):
