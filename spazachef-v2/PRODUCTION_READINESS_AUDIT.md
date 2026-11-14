@@ -5,12 +5,17 @@
 **Decision:** **NOT PRODUCTION READY — prototype / pre-production**
 
 ## Verification performed
-- Initial backend suite: 3 passed.
-- Earlier backend snapshot: 9 tests passed locally. The current Postgres/auth refactor adds/changes regression tests and has **not yet been rerun** because the local environment cannot download the pinned psycopg driver; no GitHub Actions run has been returned.
-- Frontend production build remains unverified; GitHub Actions workflow was added, but no workflow run was returned by the status lookup.
-- Frontend build: not yet verified after adding the Supabase SDK and auth screens.
-- Live Supabase signup, confirmation email, password reset, browser session refresh, and API JWT verification: not yet exercised end-to-end.
-- Live PayFast callbacks, production database, backups, monitoring, and deployment: not verified.
+- Vercel frontend preview build completed successfully for the hardening branch.
+- Vercel FastAPI preview build completed successfully for the hardening branch.
+- Both Vercel checks reported success for the preview commit; this verifies builds, not live API/database behaviour.
+- The active Supabase project is `itkovoagalodjqfjvmlp` (SpazaChef, eu-west-1); its four application tables have RLS enabled.
+- Applied the `api_rate_limits` migration successfully and verified the new table exists with RLS enabled.
+- Configured Vercel frontend Supabase URL/publishable key and environment-specific API URLs (production API for production, branch API for this preview, localhost for development); backend Supabase URL/publishable key/CORS/ENV variables are set.
+- Vercel has a sensitive `DATABASE_URL` variable for Preview and Production, but the live readiness probe fails because its value is an HTTPS Supabase project URL rather than a PostgreSQL connection URI. Replace it with the exact Supabase Transaction Pooler URI from the project Connect dialog.
+- GitHub Actions run #33 completed successfully: frontend TypeScript/Vite build passed and backend suite passed 14 tests. One Starlette/AnyIO deprecation warning remains.
+- The latest frontend and backend Vercel preview deployments are both READY for commit 8dceff9. They are preview deployments, not production releases.
+- Browser-based signup/login/recovery and live protected recipe API calls have not yet been exercised.
+- Live PayFast callbacks, production backups, monitoring, and restore drills remain unverified.
 
 ## Implemented in this staging patch
 1. **Fail-closed authentication:** API requires a Bearer JWT and returns 503 when Supabase verification configuration is missing.
@@ -21,12 +26,21 @@
 6. **Quota sequencing:** recipe generation is validated before daily quota consumption.
 7. **CI:** adds frontend build and backend test jobs for changes under `spazachef-v2/`.
 
+## Follow-up hardening added on 2026-11-12 (staging branch)
+1. Added PostgreSQL-backed per-user/per-route fixed-window rate limiting for recipe generation, recipe listing, and feedback. Its migration has now been applied to the active SpazaChef database.
+2. Isolated recipe-learning weights by authenticated user while retaining the existing weights table shape.
+3. Added database/auth readiness at /api/ready, kept /api/health as liveness, and disabled production API docs by default.
+4. Added regression tests for rate limiting, database readiness failure, fish exclusion from vegetarian recipes, and dairy/egg exclusion from vegan recipes.
+5. Corrected Vercel service configuration with the FastAPI entrypoint and SPA deep-link fallback.
+
+These changes are committed to codex/production-hardening-20261112. Vercel preview builds and GitHub CI are green; live production smoke tests remain pending.
+
 ## Remaining critical/high-priority blockers
-1. **Deployment environment is not configured.** Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` for the frontend and `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `ORIGINS`, and storage settings for the backend. Never expose a Supabase secret/service-role key to the browser.
-2. **Frontend build and CI are pending.** The lockfile must be regenerated after the new SDK dependency is added; CI currently uses npm install rather than npm ci.
-3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project.
-4. **Database connection is not configured or verified from the API runtime.** The backend now requires a privileged `DATABASE_URL` secret (never a `VITE_` variable) and uses psycopg over SSL. Configure it with the Supabase connection string and a suitable Supavisor pooler mode. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed four tables, RLS enabled on all four, seven policies, and no anon/authenticated table SELECT grants.
-5. **Shared rate limiting is absent.** Implement a shared limiter using a trusted proxy or managed store.
+1. **Backend database connection is misconfigured.** The Vercel `DATABASE_URL` secret currently contains the Supabase HTTPS API URL; Psycopg reports `missing '=' after 'https://itkovoagalodjqfjvmlp.supabase.co' in connection info string`. Replace it with the exact Transaction Pooler URI from Supabase Dashboard → Connect → Transaction pooler, with the database password URL-encoded. Keep it sensitive and never expose it to the browser.
+2. **CI and full regression tests are pending.** The Vercel frontend and backend preview builds passed; wait for the GitHub Actions test workflow and fix any failures before merge.
+3. **End-to-end auth verification is pending.** Test sign-up, email confirmation, login, refresh, logout, password recovery, and protected recipe API calls against the active SpazaChef Supabase project after DATABASE_URL is configured.
+4. **Database connection is not verified from the API runtime.** The backend uses Psycopg over SSL and expects a PostgreSQL URI, not the Supabase HTTPS project URL. Use the exact shared Transaction Pooler connection string copied from the Supabase Connect dialog (host and pooler index must not be guessed). The database schema and row ownership policies were inspected; four application tables have user-scoped policies and weights are backend-only. Daily usage is now consumed with one atomic Postgres upsert, avoiding the old process-local quota race. Existing SQLite data has not been imported; the active Supabase tables are currently empty. Hosted schema verification confirmed the four application tables have RLS enabled; the rate-limit table is also RLS-enabled with no anon/authenticated grants. Existing sc2_* tables have INFO-level advisor notices because they have RLS enabled without policies.
+5. **Shared rate limiting is implemented.** Verify live enforcement after DATABASE_URL is configured and monitor rate-limit table retention.
 6. **PayFast is intentionally disabled.** Implement provider-source verification, server-side pending orders, amount/currency matching, ownership, unique transaction IDs, replay protection/idempotency, and audit records before re-enabling.
 7. **Dietary and food safety controls are incomplete.** Filtering is substring-based and may misclassify ingredients; allergen handling and safe internal-temperature guidance are absent.
 8. **Operational readiness is unverified.** Add health/readiness checks, structured logs, monitoring/alerts, database backup/restore tests, retention/deletion workflows, and deployment rollback procedures.
@@ -35,3 +49,20 @@
 The uploaded v2 application differs from the repository's existing `main` application. This source import is intentionally isolated under `spazachef-v2/` on a draft branch; it must not replace the existing app. No production deployment has been performed.
 
 **Release recommendation:** Do not deploy this branch as production, do not enable paid subscriptions, and do not merge until the remaining blockers are resolved and verified.
+
+
+## Live API smoke test — 2026-11-12
+- Frontend preview HTML and JS bundle return HTTP 200; the built bundle contains the expected branch API base URL.
+- API preview `/api/health` returns HTTP 200.
+- API preview `/api/recipes/generate` returns HTTP 405 to GET, confirming the route is registered and correctly requires POST.
+- API preview `/api/ready` returns HTTP 503. Runtime logs identify the cause: `DATABASE_URL` is an HTTPS Supabase project URL, not a PostgreSQL URI.
+- The temporary Vercel protection override on the original API preview alias was revoked after testing. The isolated V2 API project has Vercel SSO disabled; user data routes remain protected by Supabase JWT verification.
+- No production deployment or merge to `main` has been performed. PR #3 still targets the isolated V2 staging branch.
+
+
+## Isolated API preview infrastructure
+- A separate Git-linked Vercel project, `spazachef-api-v2`, is configured with root directory `spazachef-v2/backend` and public API access; the FastAPI layer continues to require Supabase JWTs for user data routes.
+- The original `spazachef-api` project root directory and preview setting were restored to avoid changing the existing API project's deployment path while V2 is validated.
+- The isolated `spazachef-api-v2` project is deployed and its base URL is configured in the frontend preview. Its `DATABASE_URL` is not yet configured; the old `spazachef-api` project's variable was found to contain the HTTPS Supabase project URL instead of a PostgreSQL URI.
+
+- The latest frontend preview bundle now embeds `https://spazachef-api-v2.vercel.app`; the new isolated API project's `/api/health` returns HTTP 200, `/api/ready` returns HTTP 503 until its PostgreSQL URI is added, and GET `/api/recipes/generate` returns HTTP 405 as expected for a POST-only route.

@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - "codex/spazachef-v2-import-20261109"
+      - "codex/production-hardening-20261112"
     paths:
       - "spazachef-v2/**"
       - ".github/workflows/spazachef-v2-ci.yml"
