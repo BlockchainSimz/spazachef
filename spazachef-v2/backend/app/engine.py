@@ -28,7 +28,7 @@ ARCH={
 "bake":dict(title="Tray-baked {main}",oven=True,mins=50,fire=False,steps=["Heat the oven to 200 C.","Toss {p}, {v}, {a} and {sp} with oil on a tray.","Roast 35 to 40 minutes, turning once.","Serve with {s}."])}
 def parse(text): return [t.strip().lower() for t in re.split(r"[,\n;]+",text or "") if t.strip()][:40]
 def role(item):
- words=set(re.findall(r"[a-z\\-]+",item))
+ words=set(re.findall(r"[a-z-]+",item))
  # Do not mistake plant-based milks/creams for dairy.
  plant_based=bool(words & {"oat","almond","soy","soya","rice","coconut"})
  if words & set(ROLES[0][1]): return "protein"
@@ -40,7 +40,7 @@ def role(item):
  if words & set(ROLES[6][1]): return "veg"
  return "other"
 def normalize_diet(value):
- value=re.sub(r"\\s+"," ",(value or "").strip().lower())
+ value=" ".join((value or "").strip().lower().split())
  if not value or value in {"none","no preference","omnivore","anything"}: return ""
  if "vegan" in value: return "vegan"
  if "pescatarian" in value or "pescetarian" in value: return "pescatarian"
