@@ -109,6 +109,26 @@ def mark(uid, recipe_id, rating, cooked):
         )
 
 
+def save_generated_recipe(uid, day, limit, recipe):
+    """Consume one daily allowance and save its recipe in one transaction."""
+    with db() as conn:
+        row = conn.execute(
+            """insert into public.usage (uid, day, n) values (%s, %s, 1)
+               on conflict (uid, day) do update
+                 set n = public.usage.n + 1
+                 where public.usage.n < %s
+               returning n""",
+            (uid, day, limit),
+        ).fetchone()
+        if row is None:
+            return False
+        conn.execute(
+            "insert into public.recipes (id, uid, body) values (%s, %s, %s::jsonb)",
+            (recipe["id"], uid, json.dumps(recipe)),
+        )
+    return True
+
+
 def use(uid, day, limit):
     """Atomically consume one daily allowance across all API workers."""
     with db() as conn:
