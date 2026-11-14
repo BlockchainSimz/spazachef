@@ -143,9 +143,11 @@ def generate(b: Brief, req: Request, authorization: str | None = Header(None)):
     except Exception as exc:
         raise HTTPException(503, "Recipe service is temporarily unavailable.") from exc
     try:
-        if not store.use(uid, dt.date.today().isoformat(), QUOTA.get(tier, 5)):
+        saved = store.save_generated_recipe(
+            uid, dt.date.today().isoformat(), QUOTA.get(tier, 5), recipe
+        )
+        if not saved:
             raise HTTPException(402, "You've used today's recipe allowance. Upgrade for more.")
-        store.add_recipe(uid, recipe)
     except HTTPException:
         raise
     except Exception as exc:
